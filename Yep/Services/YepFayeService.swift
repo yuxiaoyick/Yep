@@ -71,6 +71,40 @@ final class YepFayeService: NSObject {
 
 // MARK: - Public
 
+struct LastRead {
+
+    let atUnixTime: NSTimeInterval
+    let messageID: String
+    let recipient: Recipient
+
+    init?(info: JSONDictionary) {
+        guard let atUnixTime = info["last_read_at"] as? NSTimeInterval else {
+            println("LastRead: Missing key: last_read_at")
+            return nil
+        }
+        guard let messageID = info["last_read_id"] as? String else {
+            println("LastRead: Missing key: last_read_id")
+            return nil
+        }
+        guard let recipientType = info["recipient_type"] as? String else {
+            println("LastRead: Missing key: recipient_type")
+            return nil
+        }
+        guard let recipientID = info["recipient_id"] as? String else {
+            println("LastRead: Missing key: recipient_id")
+            return nil
+        }
+        guard let conversationType = ConversationType(nameForServer: recipientType) else {
+            println("LastRead: Create conversationType failed!")
+            return nil
+        }
+
+        self.atUnixTime = atUnixTime
+        self.messageID = messageID
+        self.recipient = Recipient(type: conversationType, ID: recipientID)
+    }
+}
+
 extension YepFayeService {
 
     func prepareForChannel(channel: String) {
@@ -112,17 +146,17 @@ extension YepFayeService {
 
                 println("receive faye data: \(data)")
 
-                let messageInfo: JSONDictionary = data
+                let info: JSONDictionary = data
 
                 // Service 消息
-                if let _messageInfo = messageInfo["message"] as? JSONDictionary {
+                if let messageInfo = info["message"] as? JSONDictionary {
 
                     guard let realm = try? Realm() else {
                         return
                     }
 
                     realm.beginWrite()
-                    let isServiceMessage = isServiceMessageAndHandleMessageInfo(_messageInfo, inRealm: realm)
+                    let isServiceMessage = isServiceMessageAndHandleMessageInfo(messageInfo, inRealm: realm)
                     _ = try? realm.commitWrite()
 
                     if isServiceMessage {
@@ -131,7 +165,7 @@ extension YepFayeService {
                 }
 
                 guard let
-                    messageTypeString = messageInfo["message_type"] as? String,
+                    messageTypeString = info["message_type"] as? String,
                     messageType = MessageType(rawValue: messageTypeString)
                     else {
                         println("Faye recieved unknown message type")
@@ -144,58 +178,53 @@ extension YepFayeService {
 
                 case .Default:
 
-                    if let messageDataInfo = messageInfo["message"] as? JSONDictionary {
-                        self?.saveMessageWithMessageInfo(messageDataInfo)
+                    guard let messageInfo = info["message"] as? JSONDictionary else {
+                        println("Error: Faye Default not messageInfo!")
+                        break
                     }
+
+                    self?.saveMessageWithMessageInfo(messageInfo)
 
                 case .Instant:
 
-                    if let messageDataInfo = messageInfo["message"] as? JSONDictionary {
+                    guard let messageInfo = info["message"] as? JSONDictionary else {
+                        println("Error: Faye Instant not messageInfo!")
+                        break
+                    }
 
-                        if let
-                            user = messageDataInfo["user"] as? JSONDictionary,
-                            userID = user["id"] as? String,
-                            state = messageDataInfo["state"] as? Int {
+                    if let
+                        user = messageInfo["user"] as? JSONDictionary,
+                        userID = user["id"] as? String,
+                        state = messageInfo["state"] as? Int {
 
-                            if let instantStateType = InstantStateType(rawValue: state) {
-                                self?.delegate?.fayeRecievedInstantStateType(instantStateType, userID: userID)
-                            }
+                        if let instantStateType = InstantStateType(rawValue: state) {
+                            self?.delegate?.fayeRecievedInstantStateType(instantStateType, userID: userID)
                         }
                     }
 
                 case .Read:
 
-                    if let messageDataInfo = messageInfo["message"] as? JSONDictionary {
+                    guard let messageInfo = info["message"] as? JSONDictionary else {
+                        println("Error: Faye Read not messageInfo!")
+                        break
+                    }
+                    guard let lastRead = LastRead(info: messageInfo) else {
+                        break
+                    }
 
-                        //println("Faye Read: \(messageDataInfo)")
-
-                        if let
-                            lastReadAt = messageDataInfo["last_read_at"] as? NSTimeInterval,
-                            lastReadMessageID = messageDataInfo["last_read_id"] as? String,
-                            recipientType = messageDataInfo["recipient_type"] as? String,
-                            recipientID = messageDataInfo["recipient_id"] as? String {
-
-                            SafeDispatch.async {
-
-                                let object = [
-                                    "last_read_at": lastReadAt,
-                                    "last_read_id": lastReadMessageID,
-                                    "recipient_type": recipientType,
-                                    "recipient_id": recipientID,
-                                ]
-
-                                NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageBatchMarkAsRead, object: object)
-                                //self?.delegate?.fayeMessagesMarkAsReadByRecipient(last_read_at, recipientType: recipient_type, recipientID: recipient_id)
-                            }
-                        }
+                    SafeDispatch.async {
+                        NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageBatchMarkAsRead, object: Box<LastRead>(lastRead))
+                        //self?.delegate?.fayeMessagesMarkAsReadByRecipient(last_read_at, recipientType: recipient_type, recipientID: recipient_id)
                     }
 
                 case .MessageDeleted:
-                    
-                    guard let
-                        messageInfo = messageInfo["message"] as? JSONDictionary,
-                        messageID = messageInfo["id"] as? String else {
-                            break
+
+                    guard let messageInfo = info["message"] as? JSONDictionary else {
+                        println("Error: Faye MessageDeleted not messageInfo!")
+                        break
+                    }
+                    guard let messageID = messageInfo["id"] as? String else {
+                        break
                     }
                     
                     handleMessageDeletedFromServer(messageID: messageID)

@@ -12,12 +12,13 @@ import YepKit
 import RealmSwift
 import RxSwift
 import RxCocoa
+import MonkeyKing
 
 class GeniusInterviewViewController: BaseViewController {
 
     var interview: InterviewRepresentation!
 
-    private static let actionViewHeight: CGFloat = 50
+    private static let actionViewHeight: CGFloat = 49
 
     private lazy var disposeBag = DisposeBag()
 
@@ -104,10 +105,13 @@ class GeniusInterviewViewController: BaseViewController {
                 return
             }
 
-            SafeDispatch.async { [weak self] in
-                let activityViewController = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-                self?.presentViewController(activityViewController, animated: true, completion: nil)
-            }
+            let info = MonkeyKing.Info(
+                title: nil,
+                description: nil,
+                thumbnail: nil,
+                media: .URL(url)
+            )
+            self?.yep_share(info: info, defaultActivityItem: url)
         }
 
         return view

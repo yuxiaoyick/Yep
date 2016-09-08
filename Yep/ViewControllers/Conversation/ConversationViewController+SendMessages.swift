@@ -15,61 +15,44 @@ import YepNetworking
 
 extension ConversationViewController {
 
-    func send(text: String) {
+    func sendText(text: String) {
 
-        if text.isEmpty {
+        guard !text.isEmpty else {
             return
         }
 
-        if let withFriend = conversation.withFriend {
+        let recipient = self.recipient
 
-            println("try sendText to User: \(withFriend.userID)")
-            println("my userID: \(YepUserDefaults.userID.value)")
+        println("try sendText to recipient: \(recipient)")
 
-            sendText(text, toRecipient: withFriend.userID, recipientType: "User", afterCreatedMessage: { [weak self] message in
+        YepKit.sendText(text, toRecipient: recipient, afterCreatedMessage: { [weak self] message in
 
-                SafeDispatch.async {
-                    self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true, success: { _ in
-                    })
-                }
+            self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true)
 
-            }, failureHandler: { [weak self] reason, errorMessage in
-                defaultFailureHandler(reason: reason, errorMessage: errorMessage)
+        }, failureHandler: { [weak self] reason, errorMessage in
+            defaultFailureHandler(reason: reason, errorMessage: errorMessage)
 
+            switch recipient.type {
+            case .OneToOne:
                 self?.promptSendMessageFailed(
                     reason: reason,
                     errorMessage: errorMessage,
-                    reserveErrorMessage: NSLocalizedString("Failed to send text!\nTry tap on message to resend.", comment: "")
+                    reserveErrorMessage: String.trans_promptSendTextFailed
                 )
+            case .Group:
+                YepAlert.alertSorry(message: String.trans_promptSendTextFailed, inViewController: self)
+            }
 
-            }, completion: { [weak self] success in
-                println("sendText to friend: \(success)")
+        }, completion: { [weak self] success in
+            println("sendText: \(success)")
 
+            switch recipient.type {
+            case .OneToOne:
                 self?.showFriendRequestViewIfNeed()
-            })
-
-        } else if let withGroup = conversation.withGroup {
-
-            sendText(text, toRecipient: withGroup.groupID, recipientType: "Circle", afterCreatedMessage: { [weak self] message in
-
-                SafeDispatch.async {
-                    self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true, success: { _ in
-                    })
-                }
-
-                }, failureHandler: { [weak self] reason, errorMessage in
-                    defaultFailureHandler(reason: reason, errorMessage: errorMessage)
-
-                    SafeDispatch.async {
-                        YepAlert.alertSorry(message: NSLocalizedString("Failed to send text!\nTry tap on message to resend.", comment: ""), inViewController: self)
-                    }
-
-                }, completion: { [weak self] success in
-                    println("sendText to group: \(success)")
-
-                    self?.updateGroupToIncludeMe()
-                })
-        }
+            case .Group:
+                self?.updateGroupToIncludeMe()
+            }
+        })
 
         if needDetectMention {
             mentionView.hide()
@@ -81,7 +64,11 @@ extension ConversationViewController {
 
 extension ConversationViewController {
 
-    func sendAudioWithURL(fileURL: NSURL, compressedDecibelSamples: [Float]) {
+    func sendAudio(at fileURL: NSURL, with compressedDecibelSamples: [Float]) {
+
+        let recipient = self.recipient
+
+        println("try sendAudioWithURL to recipient: \(recipient)")
 
         // Prepare meta data
 
@@ -98,7 +85,7 @@ extension ConversationViewController {
         let audioAsset = AVURLAsset(URL: fileURL, options: nil)
         let audioDuration = CMTimeGetSeconds(audioAsset.duration) as Double
 
-        println("\nComporessed \(audioSamples)")
+        println("audioSamples: \(audioSamples)")
 
         let audioMetaDataInfo = [
             Config.MetaData.audioDuration: audioDuration,
@@ -112,78 +99,54 @@ extension ConversationViewController {
 
         // Do send
 
-        if let withFriend = conversation.withFriend {
-            sendAudioInFilePath(fileURL.path!, orFileData: nil, metaData: metaData, toRecipient: withFriend.userID, recipientType: "User", afterCreatedMessage: { [weak self] message in
+        sendAudioInFilePath(fileURL.path!, orFileData: nil, metaData: metaData, toRecipient: recipient, afterCreatedMessage: { [weak self] message in
 
-                SafeDispatch.async {
-                    let audioFileName = NSUUID().UUIDString
-                    if let audioURL = NSFileManager.yepMessageAudioURLWithName(audioFileName) {
-                        do {
-                            try NSFileManager.defaultManager().copyItemAtURL(fileURL, toURL: audioURL)
+            let audioFileName = NSUUID().UUIDString
+            if let audioURL = NSFileManager.yepMessageAudioURLWithName(audioFileName) {
+                do {
+                    try NSFileManager.defaultManager().copyItemAtURL(fileURL, toURL: audioURL)
 
-                            if let realm = message.realm {
-                                let _ = try? realm.write {
-                                    message.localAttachmentName = audioFileName
-                                    message.mediaType = MessageMediaType.Audio.rawValue
-                                    if let metaDataString = metaData {
-                                        message.mediaMetaData = mediaMetaDataFromString(metaDataString, inRealm: realm)
-                                    }
-                                }
-                            }
-
-                        } catch let error {
-                            println(error)
-                        }
-                    }
-
-                    self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true, success: { _ in
-                    })
-                }
-
-            }, failureHandler: { [weak self] reason, errorMessage in
-                defaultFailureHandler(reason: reason, errorMessage: errorMessage)
-
-                self?.promptSendMessageFailed(
-                    reason: reason,
-                    errorMessage: errorMessage,
-                    reserveErrorMessage: NSLocalizedString("Failed to send audio!\nTry tap on message to resend.", comment: "")
-                )
-
-            }, completion: { [weak self] success in
-                println("send audio to friend: \(success)")
-
-                self?.showFriendRequestViewIfNeed()
-            })
-
-        } else if let withGroup = conversation.withGroup {
-            sendAudioInFilePath(fileURL.path!, orFileData: nil, metaData: metaData, toRecipient: withGroup.groupID, recipientType: "Circle", afterCreatedMessage: { [weak self] message in
-
-                SafeDispatch.async {
                     if let realm = message.realm {
                         let _ = try? realm.write {
-                            message.localAttachmentName = fileURL.URLByDeletingPathExtension?.lastPathComponent ?? ""
+                            message.localAttachmentName = audioFileName
                             message.mediaType = MessageMediaType.Audio.rawValue
                             if let metaDataString = metaData {
                                 message.mediaMetaData = mediaMetaDataFromString(metaDataString, inRealm: realm)
                             }
                         }
-
-                        self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true, success: { _ in
-                        })
                     }
+
+                } catch let error {
+                    println(error)
                 }
+            }
 
-            }, failureHandler: { [weak self] reason, errorMessage in
-                defaultFailureHandler(reason: reason, errorMessage: errorMessage)
+            self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true)
 
-                YepAlert.alertSorry(message: NSLocalizedString("Failed to send audio!\nTry tap on message to resend.", comment: ""), inViewController: self)
+        }, failureHandler: { [weak self] reason, errorMessage in
+            defaultFailureHandler(reason: reason, errorMessage: errorMessage)
 
-            }, completion: { [weak self] success in
-                println("send audio to group: \(success)")
+            switch recipient.type {
+            case .OneToOne:
+                self?.promptSendMessageFailed(
+                    reason: reason,
+                    errorMessage: errorMessage,
+                    reserveErrorMessage: String.trans_promptSendAudioFailed
+                )
+            case .Group:
+                YepAlert.alertSorry(message: String.trans_promptSendAudioFailed, inViewController: self)
+            }
 
+        }, completion: { [weak self] success in
+            println("sendAudio: \(success)")
+
+            switch recipient.type {
+            case .OneToOne:
+                self?.showFriendRequestViewIfNeed()
+            case .Group:
                 self?.updateGroupToIncludeMe()
-            })
-        }
+            }
+        })
     }
 }
 
@@ -193,6 +156,10 @@ extension ConversationViewController {
 
     func sendImage(image: UIImage) {
 
+        let recipient = self.recipient
+
+        println("try sendImage to recipient: \(recipient)")
+
         // Prepare meta data
 
         let metaDataString = metaDataStringOfImage(image, needBlurThumbnail: true)
@@ -201,83 +168,51 @@ extension ConversationViewController {
 
         let imageData = UIImageJPEGRepresentation(image, YepConfig.messageImageCompressionQuality())!
 
-        let messageImageName = NSUUID().UUIDString
+        sendImageInFilePath(nil, orFileData: imageData, metaData: metaDataString, toRecipient: recipient, afterCreatedMessage: { [weak self] message in
 
-        if let withFriend = conversation.withFriend {
+            let messageImageName = NSUUID().UUIDString
 
-            sendImageInFilePath(nil, orFileData: imageData, metaData: metaDataString, toRecipient: withFriend.userID, recipientType: "User", afterCreatedMessage: { [weak self] message in
-
-                SafeDispatch.async {
-
-                    if let _ = NSFileManager.saveMessageImageData(imageData, withName: messageImageName) {
-                        if let realm = message.realm {
-                            let _ = try? realm.write {
-                                message.localAttachmentName = messageImageName
-                                message.mediaType = MessageMediaType.Image.rawValue
-                                if let metaDataString = metaDataString {
-                                    message.mediaMetaData = mediaMetaDataFromString(metaDataString, inRealm: realm)
-                                }
-                            }
+            if let _ = NSFileManager.saveMessageImageData(imageData, withName: messageImageName) {
+                if let realm = message.realm {
+                    let _ = try? realm.write {
+                        message.localAttachmentName = messageImageName
+                        message.mediaType = MessageMediaType.Image.rawValue
+                        if let metaDataString = metaDataString {
+                            message.mediaMetaData = mediaMetaDataFromString(metaDataString, inRealm: realm)
                         }
-
-                    } else {
-                        self?.alertSaveFileFailed()
                     }
-
-                    self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true, success: { _ in
-                    })
                 }
 
-            }, failureHandler: { [weak self] reason, errorMessage in
-                defaultFailureHandler(reason: reason, errorMessage: errorMessage)
+            } else {
+                self?.alertSaveFileFailed()
+            }
 
+            self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true)
+
+        }, failureHandler: { [weak self] reason, errorMessage in
+            defaultFailureHandler(reason: reason, errorMessage: errorMessage)
+
+            switch recipient.type {
+            case .OneToOne:
                 self?.promptSendMessageFailed(
                     reason: reason,
                     errorMessage: errorMessage,
-                    reserveErrorMessage: NSLocalizedString("Failed to send image!\nTry tap on message to resend.", comment: "")
+                    reserveErrorMessage: String.trans_promptSendImageFailed
                 )
+            case .Group:
+                YepAlert.alertSorry(message: String.trans_promptSendImageFailed, inViewController: self)
+            }
 
-            }, completion: { [weak self] success in
-                println("send image to friend: \(success)")
+        }, completion: { [weak self] success in
+            println("sendImage: \(success)")
 
+            switch recipient.type {
+            case .OneToOne:
                 self?.showFriendRequestViewIfNeed()
-            })
-
-        } else if let withGroup = conversation.withGroup {
-
-            sendImageInFilePath(nil, orFileData: imageData, metaData: metaDataString, toRecipient: withGroup.groupID, recipientType: "Circle", afterCreatedMessage: { [weak self] message in
-
-                SafeDispatch.async {
-                    if let _ = NSFileManager.saveMessageImageData(imageData, withName: messageImageName) {
-                        if let realm = message.realm {
-                            let _ = try? realm.write {
-                                message.localAttachmentName = messageImageName
-                                message.mediaType = MessageMediaType.Image.rawValue
-                                if let metaDataString = metaDataString {
-                                    message.mediaMetaData = mediaMetaDataFromString(metaDataString, inRealm: realm)
-                                }
-                            }
-                        }
-
-                    } else {
-                        self?.alertSaveFileFailed()
-                    }
-
-                    self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true, success: { _ in
-                    })
-                }
-
-            }, failureHandler: { [weak self] reason, errorMessage in
-                defaultFailureHandler(reason: reason, errorMessage: errorMessage)
-
-                YepAlert.alertSorry(message: NSLocalizedString("Failed to send image!\nTry tap on message to resend.", comment: ""), inViewController: self)
-
-            }, completion: { [weak self] success in
-                println("send image to group: \(success)")
-
+            case .Group:
                 self?.updateGroupToIncludeMe()
-            })
-        }
+            }
+        })
     }
 }
 
@@ -285,7 +220,11 @@ extension ConversationViewController {
 
 extension ConversationViewController {
 
-    func sendVideoWithVideoURL(videoURL: NSURL) {
+    func sendVideo(at videoURL: NSURL) {
+
+        let recipient = self.recipient
+
+        println("try sendVideoWithVideoURL to recipient: \(recipient)")
 
         // Prepare meta data
 
@@ -343,76 +282,67 @@ extension ConversationViewController {
             thumbnailData = UIImageJPEGRepresentation(image, YepConfig.messageImageCompressionQuality())
         }
 
-        let messageVideoName = NSUUID().UUIDString
-
         let afterCreatedMessageAction = { [weak self] (message: Message) in
 
-            SafeDispatch.async {
+            guard let videoData = NSData(contentsOfURL: videoURL) else {
+                return
+            }
 
-                if let videoData = NSData(contentsOfURL: videoURL) {
+            let messageVideoName = NSUUID().UUIDString
 
-                    if let _ = NSFileManager.saveMessageVideoData(videoData, withName: messageVideoName) {
-                        if let realm = message.realm {
-                            let _ = try? realm.write {
+            if let _ = NSFileManager.saveMessageVideoData(videoData, withName: messageVideoName) {
+                if let realm = message.realm {
+                    let _ = try? realm.write {
 
-                                if let thumbnailData = thumbnailData {
-                                    if let _ = NSFileManager.saveMessageImageData(thumbnailData, withName: messageVideoName) {
-                                        message.localThumbnailName = messageVideoName
+                        if let thumbnailData = thumbnailData {
+                            if let _ = NSFileManager.saveMessageImageData(thumbnailData, withName: messageVideoName) {
+                                message.localThumbnailName = messageVideoName
 
-                                    } else {
-                                        self?.alertSaveFileFailed()
-                                    }
-                                }
-
-                                message.localAttachmentName = messageVideoName
-
-                                message.mediaType = MessageMediaType.Video.rawValue
-                                if let metaDataString = metaData {
-                                    message.mediaMetaData = mediaMetaDataFromString(metaDataString, inRealm: realm)
-                                }
+                            } else {
+                                self?.alertSaveFileFailed()
                             }
                         }
 
-                    } else {
-                        self?.alertSaveFileFailed()
-                    }
+                        message.localAttachmentName = messageVideoName
 
-                    self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true, success: { _ in
-                    })
+                        message.mediaType = MessageMediaType.Video.rawValue
+                        if let metaDataString = metaData {
+                            message.mediaMetaData = mediaMetaDataFromString(metaDataString, inRealm: realm)
+                        }
+                    }
                 }
+
+            } else {
+                self?.alertSaveFileFailed()
             }
+
+            self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true)
         }
 
-        if let withFriend = conversation.withFriend {
+        sendVideoInFilePath(videoURL.path!, orFileData: nil, metaData: metaData, toRecipient: recipient, afterCreatedMessage: afterCreatedMessageAction, failureHandler: { [weak self] reason, errorMessage in
+            defaultFailureHandler(reason: reason, errorMessage: errorMessage)
 
-            sendVideoInFilePath(videoURL.path!, orFileData: nil, metaData: metaData, toRecipient: withFriend.userID, recipientType: "User", afterCreatedMessage: afterCreatedMessageAction, failureHandler: { [weak self] reason, errorMessage in
-                defaultFailureHandler(reason: reason, errorMessage: errorMessage)
-
+            switch recipient.type {
+            case .OneToOne:
                 self?.promptSendMessageFailed(
                     reason: reason,
                     errorMessage: errorMessage,
-                    reserveErrorMessage: NSLocalizedString("Failed to send video!\nTry tap on message to resend.", comment: "")
+                    reserveErrorMessage: String.trans_promptSendVideoFailed
                 )
+            case .Group:
+                YepAlert.alertSorry(message: String.trans_promptSendVideoFailed, inViewController: self)
+            }
 
-            }, completion: { [weak self] success in
-                println("send video to friend: \(success)")
+        }, completion: { [weak self] success in
+            println("sendVideo: \(success)")
 
+            switch recipient.type {
+            case .OneToOne:
                 self?.showFriendRequestViewIfNeed()
-            })
-
-        } else if let withGroup = conversation.withGroup {
-
-            sendVideoInFilePath(videoURL.path!, orFileData: nil, metaData: metaData, toRecipient: withGroup.groupID, recipientType: "Circle", afterCreatedMessage: afterCreatedMessageAction, failureHandler: { [weak self] reason, errorMessage in
-                defaultFailureHandler(reason: reason, errorMessage: errorMessage)
-
-                YepAlert.alertSorry(message: NSLocalizedString("Failed to send video!\nTry tap on message to resend.", comment: ""), inViewController: self)
-
-            }, completion: { [weak self] success in
-                println("send video to group: \(success)")
-
+            case .Group:
                 self?.updateGroupToIncludeMe()
-            })
-        }
+            }
+        })
     }
 }
 
@@ -420,48 +350,39 @@ extension ConversationViewController {
 
 extension ConversationViewController {
 
-    func sendLocationInfo(locationInfo: PickLocationViewControllerLocation.Info, toUser user: User) {
+    func sendLocation(with locationInfo: PickLocationViewControllerLocation.Info) {
 
-        sendLocationWithLocationInfo(locationInfo, toRecipient: user.userID, recipientType: "User", afterCreatedMessage: { message in
+        let recipient = self.recipient
 
-            SafeDispatch.async { [weak self] in
-                self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true, success: { _ in
-                })
-            }
+        println("try sendLocationInfo to recipient: \(recipient)")
 
-        }, failureHandler: { [weak self] reason, errorMessage in
-            defaultFailureHandler(reason: reason, errorMessage: errorMessage)
+        sendLocationWithLocationInfo(locationInfo, toRecipient: recipient, afterCreatedMessage: { [weak self] message in
 
-            self?.promptSendMessageFailed(
-                reason: reason,
-                errorMessage: errorMessage,
-                reserveErrorMessage: NSLocalizedString("Failed to send location!\nTry tap on message to resend.", comment: "")
-            )
-
-        }, completion: { [weak self] success in
-            println("send location to friend: \(success)")
-
-            self?.showFriendRequestViewIfNeed()
-        })
-    }
-
-    func sendLocationInfo(locationInfo: PickLocationViewControllerLocation.Info, toGroup group: Group) {
-
-        sendLocationWithLocationInfo(locationInfo, toRecipient: group.groupID, recipientType: "Circle", afterCreatedMessage: { message in
-            SafeDispatch.async { [weak self] in
-                self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true, success: { _ in
-                })
-            }
+            self?.updateConversationCollectionViewWithMessageIDs(nil, messageAge: .New, scrollToBottom: true)
 
         }, failureHandler: { [weak self] reason, errorMessage in
             defaultFailureHandler(reason: reason, errorMessage: errorMessage)
 
-            YepAlert.alertSorry(message: NSLocalizedString("Failed to send location!\nTry tap on message to resend.", comment: ""), inViewController: self)
+            switch recipient.type {
+            case .OneToOne:
+                self?.promptSendMessageFailed(
+                    reason: reason,
+                    errorMessage: errorMessage,
+                    reserveErrorMessage: String.trans_promptSendLocationFailed
+                )
+            case .Group:
+                YepAlert.alertSorry(message: String.trans_promptSendLocationFailed, inViewController: self)
+            }
 
         }, completion: { [weak self] success in
-            println("send location to group: \(success)")
+            println("sendLocation: \(success)")
 
-            self?.updateGroupToIncludeMe()
+            switch recipient.type {
+            case .OneToOne:
+                self?.showFriendRequestViewIfNeed()
+            case .Group:
+                self?.updateGroupToIncludeMe()
+            }
         })
     }
 }

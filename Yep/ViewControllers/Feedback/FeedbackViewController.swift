@@ -58,7 +58,7 @@ final class FeedbackViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = NSLocalizedString("Feedback", comment: "")
+        title = String.trans_titleFeedback
 
         view.backgroundColor = UIColor.yepViewBackgroundColor()
 
@@ -108,11 +108,12 @@ final class FeedbackViewController: UIViewController {
         sendFeedback(feedback, failureHandler: { [weak self] reason, errorMessage in
             defaultFailureHandler(reason: reason, errorMessage: errorMessage)
 
-            YepAlert.alertSorry(message: NSLocalizedString("Network error!", comment: ""), inViewController: self)
+            let message = errorMessage ?? "Faild to send feedback!"
+            YepAlert.alertSorry(message: message, inViewController: self)
 
         }, completion: { [weak self] _ in
 
-            YepAlert.alert(title: NSLocalizedString("Success", comment: ""), message: NSLocalizedString("Thanks! Your feedback has been recorded!", comment: ""), dismissTitle: NSLocalizedString("OK", comment: ""), inViewController: self, withDismissAction: {
+            YepAlert.alert(title: NSLocalizedString("Success", comment: ""), message: NSLocalizedString("Thanks! Your feedback has been recorded!", comment: ""), dismissTitle: String.trans_titleOK, inViewController: self, withDismissAction: {
 
                 SafeDispatch.async {
                     self?.navigationController?.popViewControllerAnimated(true)

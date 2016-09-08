@@ -528,8 +528,7 @@ public class Message: Object {
     }
 
     public var blockedTextContent: String {
-        let nickname = fromFriend?.nickname ?? ""
-        return String(format: NSLocalizedString("Ooops! You've been blocked.", comment: ""), nickname)
+        return String.trans_promptUserBeenBlocked
     }
 
     public dynamic var openGraphDetected: Bool = false
@@ -737,6 +736,17 @@ public enum ConversationType: Int {
             return "circles"
         }
     }
+
+    public init?(nameForServer: String) {
+        switch nameForServer {
+        case "User":
+            self = .OneToOne
+        case "Circle":
+            self = .Group
+        default:
+            return nil
+        }
+    }
 }
 
 public class Conversation: Object {
@@ -813,6 +823,9 @@ public class Conversation: Object {
 
     public dynamic var type: Int = ConversationType.OneToOne.rawValue
     public dynamic var updatedUnixTime: NSTimeInterval = NSDate().timeIntervalSince1970
+    public var olderUpdatedUnixTime: NSTimeInterval {
+        return updatedUnixTime - 30
+    }
 
     public dynamic var withFriend: User?
     public dynamic var withGroup: Group?
@@ -2076,7 +2089,7 @@ public func tryDeleteOrClearHistoryOfConversation(conversation: Conversation, in
     }
     deleteAlertController.addAction(clearHistoryAction)
 
-    let deleteAction: UIAlertAction = UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .Destructive) { _ in
+    let deleteAction: UIAlertAction = UIAlertAction(title: NSLocalizedString("title.delete", comment: ""), style: .Destructive) { _ in
 
         delete()
 

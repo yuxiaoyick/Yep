@@ -8,6 +8,7 @@
 
 import UIKit
 import Ruler
+import MonkeyKing
 
 final class AboutViewController: SegueViewController {
 
@@ -27,11 +28,12 @@ final class AboutViewController: SegueViewController {
 
     @IBOutlet private weak var copyrightLabel: UILabel!
 
-    private let rowHeight: CGFloat = Ruler.iPhoneVertical(50, 60, 60, 60).value
+    private let rowHeight: CGFloat = Ruler.iPhoneVertical(45, 50, 55, 60).value
 
     private let aboutAnnotations: [String] = [
         NSLocalizedString("Open Source of Yep", comment: ""),
         NSLocalizedString("Review Yep on the App Store", comment: ""),
+        String.trans_aboutRecommendYep,
         NSLocalizedString("Terms of Service", comment: ""),
     ]
 
@@ -43,7 +45,7 @@ final class AboutViewController: SegueViewController {
         appLogoImageViewTopConstraint.constant = Ruler.iPhoneVertical(0, 20, 40, 60).value
         appNameLabelTopConstraint.constant = Ruler.iPhoneVertical(10, 20, 20, 20).value
 
-        let motionEffect = UIMotionEffect.yep_twoAxesShift(Ruler.iPhoneHorizontal(20, 30, 40).value)
+        let motionEffect = UIMotionEffect.yep_twoAxesShift(Ruler.iPhoneHorizontal(30, 40, 50).value)
         appLogoImageView.addMotionEffect(motionEffect)
         appNameLabel.addMotionEffect(motionEffect)
         appVersionLabel.addMotionEffect(motionEffect)
@@ -67,6 +69,7 @@ extension AboutViewController: UITableViewDataSource, UITableViewDelegate {
     private enum Row: Int {
         case Pods = 1
         case Review
+        case Share
         case Terms
     }
 
@@ -103,14 +106,28 @@ extension AboutViewController: UITableViewDataSource, UITableViewDelegate {
         }
 
         switch indexPath.row {
+
         case Row.Pods.rawValue:
             performSegueWithIdentifier("showPodsHelpYep", sender: nil)
+
         case Row.Review.rawValue:
             UIApplication.sharedApplication().yep_reviewOnTheAppStore()
+
+        case Row.Share.rawValue:
+            let yepURL = NSURL(string: "https://soyep.com")!
+            let info = MonkeyKing.Info(
+                title: "Yep",
+                description: String.trans_aboutYepDescription,
+                thumbnail: UIImage.yep_yepIconSolo,
+                media: .URL(yepURL)
+            )
+            self.yep_share(info: info, defaultActivityItem: yepURL, description: String.trans_aboutYepDescription)
+
         case Row.Terms.rawValue:
             if let URL = NSURL(string: YepConfig.termsURLString) {
                 yep_openURL(URL)
             }
+
         default:
             break
         }

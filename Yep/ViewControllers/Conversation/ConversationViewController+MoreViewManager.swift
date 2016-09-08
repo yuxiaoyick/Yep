@@ -96,7 +96,7 @@ extension ConversationViewController {
                 updateNotificationEnabled(false, forGroupWithGroupID: groupID)
 
             } else {
-                enableNotificationFromCircleWithCircleID(groupID, failureHandler: nil, completion: {success in
+                enableNotificationFromCircleWithCircleID(groupID, failureHandler: nil, completion: { success in
                     println("enableNotificationFromCircleWithCircleID \(success)")
                     
                 })
@@ -112,7 +112,7 @@ extension ConversationViewController {
             let profileUser = ProfileUser.UserType(user)
             report(.User(profileUser))
 
-        } else if let feed = self.conversation?.withGroup?.withFeed {
+        } else if let feed = conversation.withGroup?.withFeed {
             report(.Feed(feedID: feed.feedID))
         }
     }
@@ -169,48 +169,25 @@ extension ConversationViewController {
 
     private func shareFeedWithDescripion(description: String, groupShareURLString: String) {
 
+        guard let groupShareURL = NSURL(string: groupShareURLString) else {
+            return
+        }
+
         let info = MonkeyKing.Info(
-            title: NSLocalizedString("Join Us", comment: ""),
+            title: String.trans_titleShareFeed,
             description: description,
             thumbnail: feedView?.mediaView.imageView1.image,
-            media: .URL(NSURL(string: groupShareURLString)!)
+            media: .URL(groupShareURL)
         )
 
         let timeLineinfo = MonkeyKing.Info(
-            title: "\(NSLocalizedString("Join Us", comment: "")) \(description)",
+            title: String.trans_shareFeedWithDescription(description),
             description: description,
             thumbnail: feedView?.mediaView.imageView1.image,
-            media: .URL(NSURL(string: groupShareURLString)!)
+            media: .URL(groupShareURL)
         )
 
-        let sessionMessage = MonkeyKing.Message.WeChat(.Session(info: info))
-
-        let weChatSessionActivity = WeChatActivity(
-            type: .Session,
-            message: sessionMessage,
-            finish: { success in
-                println("share Feed to WeChat Session success: \(success)")
-            }
-        )
-
-        let timelineMessage = MonkeyKing.Message.WeChat(.Timeline(info: timeLineinfo))
-
-        let weChatTimelineActivity = WeChatActivity(
-            type: .Timeline,
-            message: timelineMessage,
-            finish: { success in
-                println("share Feed to WeChat Timeline success: \(success)")
-            }
-        )
-
-        let shareText = "\(description) \(groupShareURLString)\n\(NSLocalizedString("From Yep", comment: ""))"
-
-        let activityViewController = UIActivityViewController(activityItems: [shareText], applicationActivities: [weChatSessionActivity, weChatTimelineActivity])
-        activityViewController.excludedActivityTypes = [UIActivityTypeMessage, UIActivityTypeMail]
-
-        SafeDispatch.async { [weak self] in
-            self?.presentViewController(activityViewController, animated: true, completion: nil)
-        }
+        self.yep_share(info: info, timelineInfo: timeLineinfo, defaultActivityItem: groupShareURL, description: description)
     }
 
     private func tryUpdateGroupAffair(afterSubscribed afterSubscribed: (() -> Void)? = nil) {
@@ -250,10 +227,10 @@ extension ConversationViewController {
         }
 
         let isMyFeed = feedCreator.isMe
+
         // 若是创建者，再询问是否删除 Feed
         if isMyFeed {
-
-            YepAlert.confirmOrCancel(title: NSLocalizedString("Delete", comment: ""), message: String.trans_promptAlsoDeleteThisFeed, confirmTitle: NSLocalizedString("Delete", comment: ""), cancelTitle: NSLocalizedString("Not now", comment: ""), inViewController: self, withConfirmAction: {
+            YepAlert.confirmOrCancel(title: String.trans_titleDelete, message: String.trans_promptAlsoDeleteThisFeed, confirmTitle: String.trans_titleDelete, cancelTitle: String.trans_titleNotNow, inViewController: self, withConfirmAction: {
 
                 doDeleteConversation(afterLeaveGroup: { [weak self] in
                     deleteFeedWithFeedID(feedID, failureHandler: nil, completion: {

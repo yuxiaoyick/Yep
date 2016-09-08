@@ -47,8 +47,8 @@ class MeetGeniusViewController: UIViewController {
         return view
     }()
 
-    private lazy var noGeniusInterviewsFooterView: InfoView = InfoView(NSLocalizedString("No Interviews.", comment: ""))
-    private lazy var fetchFailedFooterView: InfoView = InfoView(NSLocalizedString("Fetch Failed!", comment: ""))
+    private lazy var noGeniusInterviewsFooterView: InfoView = InfoView(String.trans_promptNoInterviews)
+    private lazy var fetchFailedFooterView: InfoView = InfoView(String.trans_errorFetchFailed)
 
     var geniusInterviews: [GeniusInterview] = []
 
@@ -151,7 +151,12 @@ class MeetGeniusViewController: UIViewController {
                 case .Top:
                     strongSelf.geniusInterviews = newGeniusInterviews
 
-                    wayToUpdate = .ReloadData
+                    if Set(oldGeniusInterviews.map({ $0.number })) == Set(newGeniusInterviews.map({ $0.number })) {
+                        wayToUpdate = .None
+
+                    } else {
+                        wayToUpdate = .ReloadData
+                    }
 
                 case .LoadMore:
                     let oldGeniusInterviewsCount = oldGeniusInterviews.count

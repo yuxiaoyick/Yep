@@ -20,7 +20,7 @@ final class FeedConversationsViewController: SegueViewController {
     }
 
     private lazy var clearUnreadBarButtonItem: UIBarButtonItem = {
-        let item = UIBarButtonItem(title: NSLocalizedString("FeedConversationsViewController.ClearUnread", comment: ""), style: .Plain, target: self, action: #selector(FeedConversationsViewController.clearUnread(_:)))
+        let item = UIBarButtonItem(title: String.trans_titleClearUnread, style: .Plain, target: self, action: #selector(FeedConversationsViewController.clearUnread(_:)))
         return item
     }()
 
@@ -82,13 +82,13 @@ final class FeedConversationsViewController: SegueViewController {
 
         realm = try! Realm()
 
-        title = NSLocalizedString("Feeds", comment: "")
+        title = String.trans_titleFeeds
 
         feedConversationsTableView.rowHeight = 80
         feedConversationsTableView.tableFooterView = UIView()
 
         feedConversationsNotificationToken = feedConversations.addNotificationBlock({ [weak self] (change: RealmCollectionChange) in
-            let predicate = NSPredicate(format: "hasUnreadMessages = true")
+            let predicate = YepConfig.Conversation.hasUnreadMessagesPredicate
             self?.unreadFeedConversations = self?.feedConversations.filter(predicate)
         })
 
@@ -244,10 +244,10 @@ extension FeedConversationsViewController: UITableViewDataSource, UITableViewDel
         var title: String = NSLocalizedString("Unsubscribe", comment: "")
         if let feed = conversation.withGroup?.withFeed {
             if feed.deleted {
-                title = NSLocalizedString("Delete", comment: "")
+                title = String.trans_titleDelete
             }
             if let creator = feed.creator where creator.isMe {
-                title = NSLocalizedString("Delete", comment: "")
+                title = String.trans_titleDelete
             }
         }
         */
@@ -299,7 +299,7 @@ extension FeedConversationsViewController: UITableViewDataSource, UITableViewDel
 
             if feedCreatorID == YepUserDefaults.userID.value {
 
-                YepAlert.confirmOrCancel(title: NSLocalizedString("Delete", comment: ""), message: String.trans_promptAlsoDeleteThisFeed, confirmTitle: NSLocalizedString("Delete", comment: ""), cancelTitle: NSLocalizedString("Not now", comment: ""), inViewController: self, withConfirmAction: {
+                YepAlert.confirmOrCancel(title: String.trans_titleDelete, message: String.trans_promptAlsoDeleteThisFeed, confirmTitle: String.trans_titleDelete, cancelTitle: String.trans_titleNotNow, inViewController: self, withConfirmAction: {
 
                     doDeleteConversation()
 

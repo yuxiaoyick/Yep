@@ -11,8 +11,9 @@ import SafariServices
 import YepKit
 import YepNetworking
 import AutoReview
+import MonkeyKing
 
-// MAKR: - Heights
+// MARK: - Heights
 
 extension UIViewController {
 
@@ -42,7 +43,7 @@ extension UIViewController {
     }
 }
 
-// MAKR: - Report
+// MARK: - Report
 
 extension ReportReason {
 
@@ -127,7 +128,7 @@ extension UIViewController {
         reportAlertController.addAction(scamsReasonAction)
 
         let otherReasonAction: UIAlertAction = UIAlertAction(title: ReportReason.Other("").title, style: .Default) { [weak self] _ in
-            YepAlert.textInput(title: NSLocalizedString("Other Reason", comment: ""), message: nil, placeholder: nil, oldText: nil, confirmTitle: NSLocalizedString("OK", comment: ""), cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { text in
+            YepAlert.textInput(title: NSLocalizedString("Other Reason", comment: ""), message: nil, placeholder: nil, oldText: nil, confirmTitle: String.trans_titleOK, cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { text in
                 reportWithReason(.Other(text))
             }, cancelAction: nil)
         }
@@ -142,7 +143,7 @@ extension UIViewController {
     }
 }
 
-// MAKR: - openURL
+// MARK: - openURL
 
 extension UIViewController {
 
@@ -153,7 +154,7 @@ extension UIViewController {
             presentViewController(safariViewController, animated: true, completion: nil)
 
         } else {
-            YepAlert.alertSorry(message: NSLocalizedString("Invalid URL!", comment: ""), inViewController: self)
+            YepAlert.alertSorry(message: String.trans_promptInvalidURL, inViewController: self)
         }
     }
 }
@@ -173,9 +174,9 @@ extension UIViewController {
             let info = AutoReview.Info(
                 appID: "983891256",
                 title: NSLocalizedString("Review Yep", comment: ""),
-                message: NSLocalizedString("Do you like Yep?\nWould you like to review it on the App Store?", comment: ""),
-                doNotRemindMeInThisVersionTitle: NSLocalizedString("Do not remind me in this version", comment: ""),
-                maybeNextTimeTitle: NSLocalizedString("Maybe next time", comment: ""),
+                message: String.trans_promptAskForReview,
+                doNotRemindMeInThisVersionTitle: String.trans_titleDoNotRemindMeInThisVersion,
+                maybeNextTimeTitle: String.trans_titleMaybeNextTime,
                 confirmTitle: NSLocalizedString("Review now", comment: "")
             )
             self?.autoreview_tryReviewApp(withInfo: info)
@@ -191,6 +192,55 @@ extension UIViewController {
 
     func alertSaveFileFailed() {
         YepAlert.alertSorry(message: NSLocalizedString("Yep can not save files!\nProbably not enough storage space.", comment: ""), inViewController: self)
+    }
+}
+
+// MARK: - Share
+
+extension UIViewController {
+
+    func yep_share<T: AnyObject where T: Shareable>(info sessionInfo: MonkeyKing.Info, timelineInfo: MonkeyKing.Info? = nil, defaultActivityItem activityItem: T, description: String? = nil) {
+
+        func weChatSessionActivity() -> WeChatActivity {
+
+            let sessionMessage = MonkeyKing.Message.WeChat(.Session(info: sessionInfo))
+
+            return WeChatActivity(
+                type: .Session,
+                message: sessionMessage,
+                completionHandler: { success in
+                    println("share to WeChat Session success: \(success)")
+                }
+            )
+        }
+
+        func weChatTimelineActivity() -> WeChatActivity {
+
+            let timelineMessage = MonkeyKing.Message.WeChat(.Timeline(info: timelineInfo ?? sessionInfo))
+
+            return WeChatActivity(
+                type: .Timeline,
+                message: timelineMessage,
+                completionHandler: { success in
+                    println("share to WeChat Timeline success: \(success)")
+                }
+            )
+        }
+
+        SafeDispatch.async { [weak self] in
+            var activityItems: [AnyObject] = [activityItem]
+            if let description = description {
+                activityItems.append(description)
+            }
+            let activityViewController = UIActivityViewController(
+                activityItems: activityItems,
+                applicationActivities: [
+                    weChatSessionActivity(),
+                    weChatTimelineActivity()
+                ]
+            )
+            self?.presentViewController(activityViewController, animated: true, completion: nil)
+        }
     }
 }
 

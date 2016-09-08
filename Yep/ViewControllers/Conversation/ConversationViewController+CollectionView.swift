@@ -16,13 +16,13 @@ import RealmSwift
 
 extension ConversationViewController {
 
-    private func tryShowConversationWithFeed(feed: DiscoveredFeed?) {
+    private func tryShowConversation(for feed: DiscoveredFeed?) {
 
         if let feed = feed {
             performSegueWithIdentifier("showConversationWithFeed", sender: Box<DiscoveredFeed>(feed))
 
         } else {
-            YepAlert.alertSorry(message: NSLocalizedString("Feed not found!", comment: ""), inViewController: self)
+            YepAlert.alertSorry(message: String.trans_promptFeedNotFound, inViewController: self)
         }
     }
 }
@@ -140,11 +140,11 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                 if isMyMessage {
                     title = NSLocalizedString("Recall", comment: "")
                 } else {
-                    title = NSLocalizedString("Hide", comment: "")
+                    title = String.trans_titleHide
                     canReport = true
                 }
             } else {
-                title = NSLocalizedString("Delete", comment: "")
+                title = String.trans_titleDelete
             }
 
             var menuItems = [
@@ -169,13 +169,8 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
 
     func collectionView(collectionView: UICollectionView, canPerformAction action: Selector, forItemAtIndexPath indexPath: NSIndexPath, withSender sender: AnyObject?) -> Bool {
 
-        if let _ = conversationCollectionView.cellForItemAtIndexPath(indexPath) as? ChatRightTextCell {
-            if action == #selector(NSObject.copy(_:)) {
-                return true
-            }
-
-        } else if let _ = conversationCollectionView.cellForItemAtIndexPath(indexPath) as? ChatLeftTextCell {
-            if action == #selector(NSObject.copy(_:)) {
+        if action == #selector(NSObject.copy(_:)) {
+            if conversationCollectionView.cellForItemAtIndexPath(indexPath) is Copyable {
                 return true
             }
         }
@@ -193,14 +188,9 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
 
     func collectionView(collectionView: UICollectionView, performAction action: Selector, forItemAtIndexPath indexPath: NSIndexPath, withSender sender: AnyObject?) {
 
-        if let cell = conversationCollectionView.cellForItemAtIndexPath(indexPath) as? ChatRightTextCell {
-            if action == #selector(NSObject.copy(_:)) {
-                UIPasteboard.generalPasteboard().string = cell.textContentTextView.text
-            }
-
-        } else if let cell = conversationCollectionView.cellForItemAtIndexPath(indexPath) as? ChatLeftTextCell {
-            if action == #selector(NSObject.copy(_:)) {
-                UIPasteboard.generalPasteboard().string = cell.textContentTextView.text
+        if action == #selector(NSObject.copy(_:)) {
+            if let copyableCell = conversationCollectionView.cellForItemAtIndexPath(indexPath) as? Copyable {
+                UIPasteboard.generalPasteboard().string = copyableCell.text
             }
         }
     }
@@ -426,17 +416,16 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                         return
                     }
 
-                    let transitionViews: [UIView?] = mediaMessages.map({
+                    let references: [Reference?] = mediaMessages.map({
                         if let index = messages.indexOf($0) {
                             if index == messageIndex {
                                 let cellIndex = index - displayedMessagesRange.location
-                                let cell = conversationCollectionView.cellForItemAtIndexPath(NSIndexPath(forItem: cellIndex, inSection: Section.Message.rawValue))
-
-                                if let leftImageCell = cell as? ChatLeftImageCell {
-                                    return leftImageCell.messageImageView
-                                } else if let rightImageCell = cell as? ChatRightImageCell {
-                                    return rightImageCell.messageImageView
+                                let cellIndexPath = NSIndexPath(forItem: cellIndex, inSection: Section.Message.rawValue)
+                                let cell = conversationCollectionView.cellForItemAtIndexPath(cellIndexPath)
+                                if let previewableCell = cell as? Previewable {
+                                    return previewableCell.transitionReference
                                 }
+
                             } else {
                                 return nil
                             }
@@ -445,7 +434,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                         return nil
                     })
 
-                    self.previewTransitionViews = transitionViews
+                    self.previewReferences = references
 
                     let previewMessagePhotos = mediaMessages.map({ PreviewMessagePhoto(message: $0) })
                     if let
@@ -663,11 +652,11 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                             cell.tapUsernameAction = tapUsernameAction
 
                             cell.tapFeedAction = { [weak self] feed in
-                                self?.tryShowConversationWithFeed(feed)
+                                self?.tryShowConversation(for: feed)
                             }
 
                             cell.tapOpenGraphURLAction = { [weak self] URL in
-                                if !URL.yep_matchSharedFeed({ [weak self] feed in self?.tryShowConversationWithFeed(feed) }) {
+                                if !URL.yep_matchSharedFeed({ [weak self] feed in self?.tryShowConversation(for: feed) }) {
                                     self?.yep_openURL(URL)
                                 }
                             }
@@ -686,7 +675,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                             cell.tapUsernameAction = tapUsernameAction
 
                             cell.tapFeedAction = { [weak self] feed in
-                                self?.tryShowConversationWithFeed(feed)
+                                self?.tryShowConversation(for: feed)
                             }
 
                             return cell
@@ -716,7 +705,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                     self?.promptSendMessageFailed(
                                         reason: reason,
                                         errorMessage: errorMessage,
-                                        reserveErrorMessage: NSLocalizedString("Failed to resend image!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                        reserveErrorMessage: String.trans_promptResendImageFailed
                                     )
 
                                 }, completion: { success in
@@ -760,7 +749,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                     self?.promptSendMessageFailed(
                                         reason: reason,
                                         errorMessage: errorMessage,
-                                        reserveErrorMessage: NSLocalizedString("Failed to resend audio!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                        reserveErrorMessage: String.trans_promptResendAudioFailed
                                     )
 
                                 }, completion: { success in
@@ -795,7 +784,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                     self?.promptSendMessageFailed(
                                         reason: reason,
                                         errorMessage: errorMessage,
-                                        reserveErrorMessage: NSLocalizedString("Failed to resend video!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                        reserveErrorMessage: String.trans_promptResendVideoFailed
                                     )
 
                                 }, completion: { success in
@@ -836,7 +825,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                     self?.promptSendMessageFailed(
                                         reason: reason,
                                         errorMessage: errorMessage,
-                                        reserveErrorMessage: NSLocalizedString("Failed to resend location!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                        reserveErrorMessage: String.trans_promptResendLocationFailed
                                     )
 
                                 }, completion: { success in
@@ -878,7 +867,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                 self?.promptSendMessageFailed(
                                     reason: reason,
                                     errorMessage: errorMessage,
-                                    reserveErrorMessage: NSLocalizedString("Failed to resend text!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                    reserveErrorMessage: String.trans_promptResendTextFailed
                                 )
 
                             }, completion: { success in
@@ -901,11 +890,11 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                         cell.tapUsernameAction = tapUsernameAction
 
                         cell.tapFeedAction = { [weak self] feed in
-                            self?.tryShowConversationWithFeed(feed)
+                            self?.tryShowConversation(for: feed)
                         }
 
                         cell.tapOpenGraphURLAction = { [weak self] URL in
-                            if !URL.yep_matchSharedFeed({ [weak self] feed in self?.tryShowConversationWithFeed(feed) }) {
+                            if !URL.yep_matchSharedFeed({ [weak self] feed in self?.tryShowConversation(for: feed) }) {
                                 self?.yep_openURL(URL)
                             }
                         }
@@ -924,7 +913,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                         cell.tapUsernameAction = tapUsernameAction
 
                         cell.tapFeedAction = { [weak self] feed in
-                            self?.tryShowConversationWithFeed(feed)
+                            self?.tryShowConversation(for: feed)
                         }
 
                         return cell
@@ -1313,7 +1302,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                         self?.promptSendMessageFailed(
                                             reason: reason,
                                             errorMessage: errorMessage,
-                                            reserveErrorMessage: NSLocalizedString("Failed to resend image!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                            reserveErrorMessage: String.trans_promptResendImageFailed
                                         )
 
                                     }, completion: { success in
@@ -1354,7 +1343,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                         self?.promptSendMessageFailed(
                                             reason: reason,
                                             errorMessage: errorMessage,
-                                            reserveErrorMessage: NSLocalizedString("Failed to resend audio!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                            reserveErrorMessage: String.trans_promptResendAudioFailed
                                         )
 
                                     }, completion: { success in
@@ -1387,7 +1376,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                         self?.promptSendMessageFailed(
                                             reason: reason,
                                             errorMessage: errorMessage,
-                                            reserveErrorMessage: NSLocalizedString("Failed to resend video!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                            reserveErrorMessage: String.trans_promptResendVideoFailed
                                         )
 
                                     }, completion: { success in
@@ -1426,7 +1415,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                         self?.promptSendMessageFailed(
                                             reason: reason,
                                             errorMessage: errorMessage,
-                                            reserveErrorMessage: NSLocalizedString("Failed to resend location!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                            reserveErrorMessage: String.trans_promptResendLocationFailed
                                         )
 
                                     }, completion: { success in
@@ -1467,7 +1456,7 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                                 self?.promptSendMessageFailed(
                                     reason: reason,
                                     errorMessage: errorMessage,
-                                    reserveErrorMessage: NSLocalizedString("Failed to resend text!\nPlease make sure your device is connected to the Internet.", comment: "")
+                                    reserveErrorMessage: String.trans_promptResendTextFailed
                                 )
 
                             }, completion: { success in
@@ -1544,6 +1533,8 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
             return
         }
 
+        let oldMessagesUpdatedVersion = self.messagesUpdatedVersion
+
         openGraphWithURL(fisrtURL, failureHandler: { reason, errorMessage in
             defaultFailureHandler(reason: reason, errorMessage: errorMessage)
 
@@ -1576,10 +1567,24 @@ extension ConversationViewController: UICollectionViewDataSource, UICollectionVi
                 // update UI
                 strongSelf.clearHeightOfMessageWithKey(message.messageID)
 
+                guard strongSelf.messagesUpdatedVersion == oldMessagesUpdatedVersion else {
+                    doInNextRunLoop { [weak self] in
+                        self?.reloadConversationCollectionView()
+                    }
+                    return
+                }
+
                 if let index = strongSelf.messages.indexOf(message) {
                     let realIndex = index - strongSelf.displayedMessagesRange.location
                     let indexPath = NSIndexPath(forItem: realIndex, inSection: Section.Message.rawValue)
-                    strongSelf.conversationCollectionView.reloadItemsAtIndexPaths([indexPath])
+
+                    doInNextRunLoop { [weak self] in
+                        if self?.conversationCollectionView.cellForItemAtIndexPath(indexPath) != nil {
+                            self?.conversationCollectionView.reloadItemsAtIndexPaths([indexPath])
+                        } else {
+                            self?.reloadConversationCollectionView()
+                        }
+                    }
 
                     // only for latest one need to scroll
                     if index == (strongSelf.displayedMessagesRange.location + strongSelf.displayedMessagesRange.length - 1) {

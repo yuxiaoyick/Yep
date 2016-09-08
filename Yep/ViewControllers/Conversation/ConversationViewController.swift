@@ -10,6 +10,7 @@ import UIKit
 import RealmSwift
 import YepKit
 import YepNetworking
+import YepPreview
 import AVFoundation
 import MobileCoreServices.UTType
 import MapKit
@@ -26,7 +27,7 @@ final class ConversationViewController: BaseViewController {
     var conversationFeed: ConversationFeed?
 
     var realm: Realm!
-    var recipient: Recipient?
+    var recipient: Recipient!
 
     // for peek
     var isPreviewed: Bool = false
@@ -50,6 +51,9 @@ final class ConversationViewController: BaseViewController {
     lazy var messages: Results<Message> = {
         return messagesOfConversation(self.conversation, inRealm: self.realm)
     }()
+
+    internal private(set) var messagesUpdatedVersion = 0
+    private var messagesNotificationToken: NotificationToken?
 
     var indexOfSearchedMessage: Int?
     let messagesBunchCount = 20 // 分段载入的“一束”消息的数量
@@ -118,12 +122,19 @@ final class ConversationViewController: BaseViewController {
         }
     }
 
-    @IBOutlet private weak var swipeUpView: UIView! {
-        didSet {
-            swipeUpView.hidden = true
-        }
-    }
-    @IBOutlet private weak var swipeUpPromptLabel: UILabel!
+    private lazy var swipeUpPromptView: SwipeUpPromptView = {
+        let view = SwipeUpPromptView()
+
+        self.view.addSubview(view)
+        view.translatesAutoresizingMaskIntoConstraints = false
+
+        view.heightAnchor.constraintEqualToConstant(100).active = true
+        view.leadingAnchor.constraintEqualToAnchor(self.messageToolbar.leadingAnchor).active = true
+        view.trailingAnchor.constraintEqualToAnchor(self.messageToolbar.trailingAnchor).active = true
+        self.messageToolbar.topAnchor.constraintEqualToAnchor(view.bottomAnchor, constant: 20).active = true
+
+        return view
+    }()
 
     @IBOutlet weak var activityIndicator: UIActivityIndicatorView!
 
@@ -161,7 +172,7 @@ final class ConversationViewController: BaseViewController {
         static let Avatar = "ConversationViewController"
     }
 
-    var previewTransitionViews: [UIView?]?
+    var previewReferences: [Reference?]?
     var previewAttachmentPhotos: [PreviewAttachmentPhoto] = []
     var previewMessagePhotos: [PreviewMessagePhoto] = []
 
@@ -173,6 +184,8 @@ final class ConversationViewController: BaseViewController {
         conversationCollectionView?.delegate = nil
 
         checkTypingStatusTimer?.invalidate()
+
+        messagesNotificationToken?.stop()
 
         println("deinit ConversationViewController")
     }
@@ -225,7 +238,7 @@ final class ConversationViewController: BaseViewController {
                 if displayedMessagesRange.length == 1 {
                     if let maxMessageID = messages.first?.messageID {
                         let timeDirection: TimeDirection = .Past(maxMessageID: maxMessageID)
-                        loadMessagesFromServer(withTimeDirection: timeDirection, invalidMessageIDSet: nil, failed: nil, completion: { [weak self] (messageIDs, noMore) in
+                        loadMessagesFromServer(with: timeDirection) { [weak self] (messageIDs, noMore) in
                             self?.noMorePreviousMessages = noMore
 
                             if !messageIDs.isEmpty {
@@ -234,7 +247,7 @@ final class ConversationViewController: BaseViewController {
                                     self?.trySnapContentOfConversationCollectionViewToBottom(forceAnimation: true)
                                 }
                             }
-                        })
+                        }
                     }
                 }
             }
@@ -348,6 +361,19 @@ final class ConversationViewController: BaseViewController {
         let job = FreeTimeJob(target: self, selector: #selector(ConversationViewController.prepareHeightOfMessagesInFreeTime))
         job.commit()
 
+        messagesNotificationToken = messages.addNotificationBlock({ [weak self] (change: RealmCollectionChange) in
+            guard let strongSelf = self else { return }
+            switch change {
+            case .Initial:
+                strongSelf.messagesUpdatedVersion = 0
+             case .Update(_, let deletions, let insertions, _):
+                let x = (deletions.isEmpty && insertions.isEmpty) ? 0 : 1
+                strongSelf.messagesUpdatedVersion += x
+            case .Error:
+                strongSelf.reloadConversationCollectionView()
+            }
+        })
+
         #if DEBUG
             //view.addSubview(conversationFPSLabel)
         #endif
@@ -364,7 +390,7 @@ final class ConversationViewController: BaseViewController {
             }
 
             if let conversationFeed = conversationFeed {
-                makeFeedViewWithFeed(conversationFeed)
+                self.feedView = makeFeedView(for: conversationFeed)
                 tryFoldFeedView()
             }
 
@@ -555,14 +581,14 @@ final class ConversationViewController: BaseViewController {
                 let text = messageToolbar.messageTextView.text!.trimming(.WhitespaceAndNewline)
                 self?.cleanTextInput()
                 self?.trySnapContentOfConversationCollectionViewToBottom()
-                self?.send(text)
+                self?.sendText(text)
             }
 
             // MARK: Voice Record
 
             let hideWaver: () -> Void = { [weak self] in
 
-                self?.swipeUpView.hidden = true
+                self?.swipeUpPromptView.hidden = true
                 self?.waverView.removeFromSuperview()
             }
 
@@ -575,7 +601,7 @@ final class ConversationViewController: BaseViewController {
                     }
 
                     let compressedDecibelSamples = AudioBot.compressDecibelSamples(decibelSamples, withSamplingInterval: 6, minNumberOfDecibelSamples: 20, maxNumberOfDecibelSamples: 60)
-                    self?.sendAudioWithURL(fileURL, compressedDecibelSamples: compressedDecibelSamples)
+                    self?.sendAudio(at: fileURL, with: compressedDecibelSamples)
                 }
             }
 
@@ -588,10 +614,10 @@ final class ConversationViewController: BaseViewController {
 
                         strongSelf.view.addSubview(strongSelf.waverView)
 
-                        strongSelf.swipeUpPromptLabel.text = NSLocalizedString("Swipe Up to Cancel", comment: "")
-                        strongSelf.swipeUpView.hidden = false
+                        strongSelf.swipeUpPromptView.text = NSLocalizedString("Swipe Up to Cancel", comment: "")
+                        strongSelf.swipeUpPromptView.hidden = false
 
-                        strongSelf.view.bringSubviewToFront(strongSelf.swipeUpView)
+                        strongSelf.view.bringSubviewToFront(strongSelf.swipeUpPromptView)
                         strongSelf.view.bringSubviewToFront(strongSelf.messageToolbar)
                         strongSelf.view.bringSubviewToFront(strongSelf.moreMessageTypesView)
 
@@ -661,7 +687,7 @@ final class ConversationViewController: BaseViewController {
                     text = NSLocalizedString("Swipe Up to Cancel", comment: "")
                 }
 
-                self?.swipeUpPromptLabel.text = text
+                self?.swipeUpPromptView.text = text
             }
         }
 
@@ -876,13 +902,7 @@ final class ConversationViewController: BaseViewController {
             let vc = nvc.topViewController as! PickLocationViewController
 
             vc.sendLocationAction = { [weak self] locationInfo in
-
-                if let user = self?.conversation.withFriend {
-                    self?.sendLocationInfo(locationInfo, toUser: user)
-
-                } else if let group = self?.conversation.withGroup {
-                    self?.sendLocationInfo(locationInfo, toGroup: group)
-                }
+                self?.sendLocation(with: locationInfo)
             }
 
         default:
@@ -1198,12 +1218,7 @@ final class ConversationViewController: BaseViewController {
         guard YepFayeService.sharedManager.fayeClient.isConnected else {
             return
         }
-
-        guard let _ = self.conversation.withFriend else {
-            return
-        }
-
-        guard let recipient = self.recipient else {
+        guard recipient.type == .OneToOne else {
             return
         }
 
@@ -1222,18 +1237,16 @@ final class ConversationViewController: BaseViewController {
 
     @objc private func messagesMarkAsReadByRecipient(notification: NSNotification) {
 
-        guard let
-            messageDataInfo = notification.object as? [String: AnyObject],
-            lastReadUnixTime = messageDataInfo["last_read_at"] as? NSTimeInterval,
-            lastReadMessageID = messageDataInfo["last_read_id"] as? String,
-            recipientType = messageDataInfo["recipient_type"] as? String,
-            recipientID = messageDataInfo["recipient_id"] as? String else {
-                return
+        guard let lastRead = (notification.object as? Box<LastRead>)?.value else {
+            println("Error: messagesMarkAsReadByRecipient: \(notification.object)")
+            return
         }
 
-        if recipientID == recipient?.ID && recipientType == recipient?.type.nameForServer {
-            markAsReadAllSentMesagesBeforeUnixTime(lastReadUnixTime, lastReadMessageID: lastReadMessageID)
+        guard lastRead.recipient == recipient else {
+            return
         }
+
+        markAsReadAllSentMesagesBeforeUnixTime(lastRead.atUnixTime, lastReadMessageID: lastRead.messageID)
     }
 
     @objc private func tapToCollapseMessageToolBar(sender: UITapGestureRecognizer) {
@@ -1298,17 +1311,26 @@ final class ConversationViewController: BaseViewController {
 
     private func handleRecievedNewMessages(messageIDs: [String], messageAge: MessageAge) {
 
+        if !isPreviewed {
+            //Make sure insert cell when in conversation viewcontroller
+            guard self.navigationController?.visibleViewController is ConversationViewController else {
+                return
+            }
+        }
+
         realm.refresh() // 确保是最新数据
+
+        guard let conversation = conversation, let conversationID = conversation.fakeID else {
+            return
+        }
 
         // 按照 conversation 过滤消息，匹配的才能考虑插入
         var filteredMessageIDs: [String] = []
-        if let conversation = conversation, let conversationID = conversation.fakeID {
-            for messageID in messageIDs {
-                if let message = messageWithMessageID(messageID, inRealm: realm) {
-                    if let messageInConversationID = message.conversation?.fakeID {
-                        if messageInConversationID == conversationID {
-                            filteredMessageIDs.append(messageID)
-                        }
+        for messageID in messageIDs {
+            if let message = messageWithMessageID(messageID, inRealm: realm) {
+                if let messageInConversationID = message.conversation?.fakeID {
+                    if messageInConversationID == conversationID {
+                        filteredMessageIDs.append(messageID)
                     }
                 }
             }
@@ -1319,8 +1341,7 @@ final class ConversationViewController: BaseViewController {
 
         // 在前台时才能做插入
         if UIApplication.sharedApplication().applicationState == .Active {
-            updateConversationCollectionViewWithMessageIDs(filteredMessageIDs, messageAge: messageAge, scrollToBottom: false, success: { _ in
-            })
+            updateConversationCollectionViewWithMessageIDs(filteredMessageIDs, messageAge: messageAge, scrollToBottom: false)
 
         } else {
             // 不然就先记下来
@@ -1360,8 +1381,7 @@ final class ConversationViewController: BaseViewController {
     private func tryInsertInActiveNewMessages() {
 
         if inactiveNewMessageIDSet.count > 0 {
-            updateConversationCollectionViewWithMessageIDs(Array(inactiveNewMessageIDSet), messageAge: .New, scrollToBottom: false, success: { _ in
-            })
+            updateConversationCollectionViewWithMessageIDs(Array(inactiveNewMessageIDSet), messageAge: .New, scrollToBottom: false)
 
             inactiveNewMessageIDSet = []
 
@@ -1369,14 +1389,14 @@ final class ConversationViewController: BaseViewController {
         }
     }
 
-    func updateConversationCollectionViewWithMessageIDs(messageIDs: [String]?, messageAge: MessageAge, scrollToBottom: Bool, success: (Bool) -> Void) {
+    func updateConversationCollectionViewWithMessageIDs(messageIDs: [String]?, messageAge: MessageAge, scrollToBottom: Bool, success: ((Bool) -> Void)? = nil) {
 
-        /*
         // 重要
-        guard navigationController?.topViewController == self else { // 防止 pop/push 后，原来未释放的 VC 也执行这下面的代码
-            return
+        if !isPreviewed {
+            guard navigationController?.topViewController == self else { // 防止 pop/push 后，原来未释放的 VC 也执行这下面的代码
+                return
+            }
         }
-         */
 
         if messageIDs != nil {
             batchMarkMessagesAsReaded()
@@ -1386,7 +1406,7 @@ final class ConversationViewController: BaseViewController {
         let keyboardAndToolBarHeight = messageToolbarBottomConstraint.constant + CGRectGetHeight(messageToolbar.bounds) + subscribeViewHeight
 
         adjustConversationCollectionViewWithMessageIDs(messageIDs, messageAge: messageAge, adjustHeight: keyboardAndToolBarHeight, scrollToBottom: scrollToBottom) { finished in
-            success(finished)
+            success?(finished)
         }
 
         if messageAge == .New {
@@ -1412,6 +1432,8 @@ final class ConversationViewController: BaseViewController {
     }
 
     private func adjustConversationCollectionViewWithMessageIDs(messageIDs: [String]?, messageAge: MessageAge, adjustHeight: CGFloat, scrollToBottom: Bool, success: (Bool) -> Void) {
+
+        let oldMessagesUpdatedVersion = self.messagesUpdatedVersion
 
         let _lastTimeMessagesCount = lastTimeMessagesCount
         lastTimeMessagesCount = messages.count
@@ -1466,6 +1488,7 @@ final class ConversationViewController: BaseViewController {
                 switch messageAge {
 
                 case .New:
+
                     conversationCollectionView.performBatchUpdates({ [weak self] in
                         guard let strongSelf = self else {
                             return
@@ -1476,15 +1499,14 @@ final class ConversationViewController: BaseViewController {
                             strongSelf.needReloadLoadPreviousSection = false
                         }
 
-                        // double check
-                        if indexPaths.count == (strongSelf.messages.count - _lastTimeMessagesCount) {
-                            strongSelf.conversationCollectionView.insertItemsAtIndexPaths(indexPaths)
-
-                        } else {
+                        guard strongSelf.messagesUpdatedVersion == oldMessagesUpdatedVersion else {
                             strongSelf.conversationCollectionView.reloadSections(NSIndexSet(index: Section.Message.rawValue))
                             strongSelf.lastTimeMessagesCount = strongSelf.messages.count
                             println("double check failed! \(strongSelf.messages.count), \(_lastTimeMessagesCount)")
+                            return
                         }
+
+                        strongSelf.conversationCollectionView.insertItemsAtIndexPaths(indexPaths)
 
                     }, completion: nil)
 
@@ -1505,15 +1527,14 @@ final class ConversationViewController: BaseViewController {
                             strongSelf.needReloadLoadPreviousSection = false
                         }
 
-                        // double check
-                        if indexPaths.count == (strongSelf.messages.count - _lastTimeMessagesCount) {
-                            strongSelf.conversationCollectionView.insertItemsAtIndexPaths(indexPaths)
-
-                        } else {
+                        guard strongSelf.messagesUpdatedVersion == oldMessagesUpdatedVersion else {
                             strongSelf.conversationCollectionView.reloadSections(NSIndexSet(index: Section.Message.rawValue))
                             strongSelf.lastTimeMessagesCount = strongSelf.messages.count
                             println("double check failed! \(strongSelf.messages.count), \(_lastTimeMessagesCount)")
+                            return
                         }
+
+                        strongSelf.conversationCollectionView.insertItemsAtIndexPaths(indexPaths)
 
                     }, completion: { [weak self] finished in
                         if let strongSelf = self {
@@ -1549,15 +1570,14 @@ final class ConversationViewController: BaseViewController {
                         strongSelf.needReloadLoadPreviousSection = false
                     }
 
-                    // double check
-                    if indexPaths.count == (strongSelf.messages.count - _lastTimeMessagesCount) {
-                        strongSelf.conversationCollectionView.insertItemsAtIndexPaths(indexPaths)
-
-                    } else {
+                    guard strongSelf.messagesUpdatedVersion == oldMessagesUpdatedVersion else {
                         strongSelf.conversationCollectionView.reloadSections(NSIndexSet(index: Section.Message.rawValue))
                         strongSelf.lastTimeMessagesCount = strongSelf.messages.count
                         println("double check failed! \(strongSelf.messages.count), \(_lastTimeMessagesCount)")
+                        return
                     }
+
+                    strongSelf.conversationCollectionView.insertItemsAtIndexPaths(indexPaths)
 
                 }, completion: nil)
 
@@ -1613,9 +1633,11 @@ final class ConversationViewController: BaseViewController {
         }
     }
 
-    @objc private func reloadConversationCollectionView() {
-        SafeDispatch.async {
-            self.conversationCollectionView.reloadData()
+    @objc internal func reloadConversationCollectionView() {
+        SafeDispatch.async { [weak self] in
+            guard let strongSelf = self else { return }
+            strongSelf.conversationCollectionView.reloadData()
+            strongSelf.lastTimeMessagesCount = strongSelf.messages.count
         }
     }
 

@@ -14,9 +14,6 @@ import RxCocoa
 
 final class RegisterPickNameViewController: BaseViewController {
 
-    var mobile: String?
-    var areaCode: String?
-
     private lazy var disposeBag = DisposeBag()
 
     @IBOutlet private weak var pickNamePromptLabel: UILabel!
@@ -29,7 +26,7 @@ final class RegisterPickNameViewController: BaseViewController {
     
     private lazy var nextButton: UIBarButtonItem = {
         let button = UIBarButtonItem()
-        button.title = NSLocalizedString("Next", comment: "")
+        button.title = String.trans_buttonNextStep
         button.rx_tap
             .subscribeNext({ [weak self] in self?.showRegisterPickMobile() })
             .addDisposableTo(self.disposeBag)
@@ -49,8 +46,6 @@ final class RegisterPickNameViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        animatedOnNavigationBar = false
 
         view.backgroundColor = UIColor.yepViewBackgroundColor()
 
@@ -120,28 +115,6 @@ final class RegisterPickNameViewController: BaseViewController {
         YepUserDefaults.nickname.value = nickname
 
         performSegueWithIdentifier("showRegisterPickMobile", sender: nil)
-    }
-
-    // MARK: Navigation
-
-    override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
-
-        guard let identifier = segue.identifier else {
-            return
-        }
-
-        switch identifier {
-
-        case "showRegisterPickMobile":
-
-            let vc = segue.destinationViewController as! RegisterPickMobileViewController
-
-            vc.mobile = mobile
-            vc.areaCode = areaCode
-
-        default:
-            break
-        }
     }
 }
 

@@ -15,20 +15,25 @@ extension ConversationViewController {
 
     func trySyncMessages() {
 
+        guard !conversation.invalidated else {
+            return
+        }
+        guard let recipient = self.recipient else {
+            return
+        }
+
         let syncMessages: (failedAction: (() -> Void)?, successAction: (() -> Void)?) -> Void = { failedAction, successAction in
 
             SafeDispatch.async { [weak self] in
-
-                guard let recipient = self?.recipient else {
-                    return
-                }
 
                 let timeDirection: TimeDirection
                 if let minMessageID = self?.messages.last?.messageID {
                     timeDirection = .Future(minMessageID: minMessageID)
                 } else {
                     timeDirection = .None
+                }
 
+                if case .None = timeDirection {
                     self?.activityIndicator.startAnimating()
                 }
 
@@ -59,11 +64,7 @@ extension ConversationViewController {
             }
         }
 
-        guard let conversationType = ConversationType(rawValue: conversation.type) else {
-            return
-        }
-
-        switch conversationType {
+        switch recipient.type {
 
         case .OneToOne:
 
@@ -82,10 +83,6 @@ extension ConversationViewController {
 
     func syncMessagesReadStatus() {
 
-        guard let recipient = recipient else {
-            return
-        }
-
         lastMessageReadByRecipient(recipient, failureHandler: nil, completion: { [weak self] lastMessageRead in
 
             if let lastMessageRead = lastMessageRead {
@@ -96,9 +93,7 @@ extension ConversationViewController {
 
     func markAsReadAllSentMesagesBeforeUnixTime(unixTime: NSTimeInterval, lastReadMessageID: String? = nil) {
 
-        guard let recipient = recipient else {
-            return
-        }
+        let recipient = self.recipient
 
         dispatch_async(realmQueue) {
 
@@ -138,13 +133,14 @@ extension ConversationViewController {
 
     func batchMarkMessagesAsReaded(updateOlderMessagesIfNeeded updateOlderMessagesIfNeeded: Bool = true) {
 
+        let recipient = self.recipient
+
         SafeDispatch.async { [weak self] in
 
             guard let strongSelf = self else {
                 return
             }
-
-            guard let recipient = strongSelf.recipient, latestMessage = strongSelf.messages.last else {
+            guard let latestMessage = strongSelf.messages.last else {
                 return
             }
 

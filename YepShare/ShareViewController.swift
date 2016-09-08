@@ -23,7 +23,7 @@ class ShareViewController: SLComposeServiceViewController {
             if let skill = skill {
                 channelItem.value = skill.localName
             } else {
-                channelItem.value = NSLocalizedString("Default", comment: "")
+                channelItem.value = String.trans_titleDefault
             }
         }
     }
@@ -31,7 +31,7 @@ class ShareViewController: SLComposeServiceViewController {
     lazy var channelItem: SLComposeSheetConfigurationItem = {
 
         let item = SLComposeSheetConfigurationItem()
-        item.title = NSLocalizedString("Channel", comment: "")
+        item.title = String.trans_titleChannel
         item.value = NSLocalizedString("Default", comment: "")
         item.tapHandler = { [weak self] in
             self?.performSegueWithIdentifier("presentChooseChannel", sender: nil)
@@ -65,7 +65,7 @@ class ShareViewController: SLComposeServiceViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = NSLocalizedString("New Feed", comment: "")
+        title = String.trans_titleNewFeed
 
         Realm.Configuration.defaultConfiguration = realmConfig()
 
@@ -86,20 +86,17 @@ class ShareViewController: SLComposeServiceViewController {
 
         webURLsFromExtensionContext(extensionContext!) { [weak self] webURLs in
             self?.webURLs = webURLs
-
-            print("webURLs: \(self?.webURLs)")
+            //print("webURLs: \(self?.webURLs)")
         }
 
         imagesFromExtensionContext(extensionContext!) { [weak self] images in
             self?.images = images
-
-            print("images: \(self?.images)")
+            //print("images: \(self?.images)")
         }
 
         fileURLsFromExtensionContext(extensionContext!) { [weak self] fileURLs in
             self?.fileURLs = fileURLs
-
-            print("fileURLs: \(self?.fileURLs)")
+            //print("fileURLs: \(self?.fileURLs)")
         }
     }
 
@@ -125,9 +122,7 @@ class ShareViewController: SLComposeServiceViewController {
         }
 
         postFeed(shareType) { [weak self] finish in
-
-            print("postFeed \(shareType) finish: \(finish)")
-
+            //print("postFeed \(shareType) finish: \(finish)")
             self?.extensionContext?.completeRequestReturningItems([], completionHandler: nil)
         }
     }

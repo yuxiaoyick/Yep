@@ -69,7 +69,7 @@ final class ShowViewController: UIViewController {
         pageControl.currentPageIndicatorTintColor = UIColor.yepTintColor()
 
         registerButton.setTitle(NSLocalizedString("Sign Up", comment: ""), forState: .Normal)
-        loginButton.setTitle(NSLocalizedString("Login", comment: ""), forState: .Normal)
+        loginButton.setTitle(String.trans_titleLogin, forState: .Normal)
 
         registerButton.backgroundColor = UIColor.yepTintColor()
         loginButton.setTitleColor(UIColor.yepInputTextColor(), forState: .Normal)
@@ -124,20 +124,6 @@ final class ShowViewController: UIViewController {
         step.didMoveToParentViewController(self)
 
         return step
-    }
-
-    // MARK: Actions
-    
-    @IBAction private func register(sender: UIButton) {
-
-        let vc = UIStoryboard.Scene.registerPickName
-        navigationController?.pushViewController(vc, animated: true)
-    }
-
-    @IBAction private func login(sender: UIButton) {
-
-        let vc = UIStoryboard.Scene.loginByMobile
-        navigationController?.pushViewController(vc, animated: true)
     }
 }
 

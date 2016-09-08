@@ -23,12 +23,9 @@ public class PhotosViewController: UIViewController {
         view.backgroundColor = UIColor.clearColor()
 
         view.shareAction = { [weak self] in
-            guard let image = self?.currentlyDisplayedPhoto?.image else {
-                return
-            }
-
-            let activityViewController = UIActivityViewController(activityItems: [image], applicationActivities: nil)
-            self?.presentViewController(activityViewController, animated: true, completion: nil)
+            guard let strongSelf = self else { return }
+            guard let image = strongSelf.currentlyDisplayedPhoto?.image else { return }
+            Config.shareImageAction?(image: image, fromViewController: strongSelf)
         }
 
         return view
@@ -60,13 +57,13 @@ public class PhotosViewController: UIViewController {
 
         return currentPhotoViewController?.photo
     }
-    private var referenceViewForCurrentPhoto: UIView? {
+    private var referenceForCurrentPhoto: Reference? {
 
         guard let photo = currentlyDisplayedPhoto else {
             return nil
         }
         
-        return delegate?.photosViewController(self, referenceViewForPhoto: photo)
+        return delegate?.photosViewController(self, referenceForPhoto: photo)
     }
 
     private lazy var panGestureRecognizer: UIPanGestureRecognizer = {
@@ -188,10 +185,14 @@ public class PhotosViewController: UIViewController {
         }
 
         do {
-            transitionController.setStartingView(referenceViewForCurrentPhoto)
+            transitionController.setStartingReference(referenceForCurrentPhoto)
 
             if currentlyDisplayedPhoto?.image != nil {
-                transitionController.setEndingView(currentPhotoViewController?.scalingImageView.imageView)
+                var endingReference: Reference?
+                if let imageView = currentPhotoViewController?.scalingImageView.imageView {
+                    endingReference = Reference(view: imageView, image: imageView.image)
+                }
+                transitionController.setEndingReference(endingReference)
             }
         }
     }
@@ -265,9 +266,12 @@ public class PhotosViewController: UIViewController {
             return
         }
 
-        let startingView = currentPhotoViewController?.scalingImageView.imageView
-        transitionController.setStartingView(startingView)
-        transitionController.setEndingView(referenceViewForCurrentPhoto)
+        var startingReference: Reference?
+        if let imageView = currentPhotoViewController?.scalingImageView.imageView {
+            startingReference = Reference(view: imageView, image: imageView.image)
+        }
+        transitionController.setStartingReference(startingReference)
+        transitionController.setEndingReference(referenceForCurrentPhoto)
 
         let overlayActionViewWasHidden = overlayActionView.hidden
         self.overlayActionViewWasHiddenBeforeTransition = overlayActionViewWasHidden

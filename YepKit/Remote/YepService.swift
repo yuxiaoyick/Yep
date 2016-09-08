@@ -31,6 +31,7 @@ func println(@autoclosure item: () -> Any) {
 // Models
 
 public struct LoginUser: CustomStringConvertible {
+
     public let accessToken: String
     public let userID: String
     public let username: String?
@@ -40,6 +41,21 @@ public struct LoginUser: CustomStringConvertible {
 
     public var description: String {
         return "LoginUser(accessToken: \(accessToken), userID: \(userID), username: \(username), nickname: \(nickname), avatarURLString: \(avatarURLString), pusherID: \(pusherID))"
+    }
+
+    static func fromJSONDictionary(data: JSONDictionary) -> LoginUser? {
+
+        guard let accessToken = data["access_token"] as? String else { return nil }
+
+        guard let user = data["user"] as? [String: AnyObject] else { return nil }
+        guard let userID = user["id"] as? String else { return nil }
+        guard let nickname = user["nickname"] as? String else { return nil }
+        guard let pusherID = user["pusher_id"] as? String else { return nil }
+
+        let username = user["username"] as? String
+        let avatarURLString = user["avatar_url"] as? String
+
+        return LoginUser(accessToken: accessToken, userID: userID, username: username, nickname: nickname, avatarURLString: avatarURLString, pusherID: pusherID)
     }
 }
 
@@ -66,17 +82,32 @@ public func saveTokenAndUserInfoOfLoginUser(loginUser: LoginUser) {
     YepUserDefaults.v1AccessToken.value = loginUser.accessToken
 }
 
+public struct MobilePhone {
+
+    public let areaCode: String
+    public let number: String
+
+    public var fullNumber: String {
+        return "+" + areaCode + " " + number
+    }
+
+    public init(areaCode: String, number: String) {
+        self.areaCode = areaCode
+        self.number = number
+    }
+}
+
 // MARK: - Register
 
-public func validateMobile(mobile: String, withAreaCode areaCode: String, failureHandler: FailureHandler?, completion: ((Bool, String)) -> Void) {
+public func validateMobilePhone(mobilePhone: MobilePhone, failureHandler: FailureHandler?, completion: ((Bool, String)) -> Void) {
 
     let requestParameters: JSONDictionary = [
-        "mobile": mobile,
-        "phone_code": areaCode,
+        "phone_code": mobilePhone.areaCode,
+        "mobile": mobilePhone.number,
     ]
 
     let parse: JSONDictionary -> (Bool, String)? = { data in
-        println("data: \(data)")
+        println("validateMobilePhone: \(data)")
         if let available = data["available"] as? Bool {
             if available {
                 return (available, "")
@@ -95,13 +126,15 @@ public func validateMobile(mobile: String, withAreaCode areaCode: String, failur
     apiRequest({_ in}, baseURL: yepBaseURL, resource: resource, failure: failureHandler, completion: completion)
 }
 
-public func registerMobile(mobile: String, withAreaCode areaCode: String, nickname: String, failureHandler: FailureHandler?, completion: Bool -> Void) {
+public func registerMobilePhone(mobilePhone: MobilePhone, nickname: String, failureHandler: FailureHandler?, completion: Bool -> Void) {
+
     let requestParameters: JSONDictionary = [
-        "mobile": mobile,
-        "phone_code": areaCode,
+        "phone_code": mobilePhone.areaCode,
+        "mobile": mobilePhone.number,
         "nickname": nickname,
-        "longitude": 0, // TODO: 注册时不好提示用户访问位置，或许设置技能或用户利用位置查找好友时再提示并更新位置信息
-        "latitude": 0
+        // 注册时不好提示用户访问位置，或许设置技能或用户利用位置查找好友时再提示并更新位置信息
+        "longitude": YepUserDefaults.userCoordinateLongitude.value ?? 0,
+        "latitude": YepUserDefaults.userCoordinateLatitude.value ?? 0,
     ]
 
     let parse: JSONDictionary -> Bool? = { data in
@@ -119,31 +152,18 @@ public func registerMobile(mobile: String, withAreaCode areaCode: String, nickna
     apiRequest({_ in}, baseURL: yepBaseURL, resource: resource, failure: failureHandler, completion: completion)
 }
 
-public func verifyMobile(mobile: String, withAreaCode areaCode: String, verifyCode: String, failureHandler: FailureHandler?, completion: LoginUser -> Void) {
+public func verifyMobilePhone(mobilePhone: MobilePhone, verifyCode: String, failureHandler: FailureHandler?, completion: LoginUser -> Void) {
+
     let requestParameters: JSONDictionary = [
-        "mobile": mobile,
-        "phone_code": areaCode,
+        "phone_code": mobilePhone.areaCode,
+        "mobile": mobilePhone.number,
         "token": verifyCode,
         "client": Config.clientType(),
         "expiring": 0, // 永不过期
     ]
 
     let parse: JSONDictionary -> LoginUser? = { data in
-
-        if let accessToken = data["access_token"] as? String {
-            if let user = data["user"] as? [String: AnyObject] {
-                if
-                    let userID = user["id"] as? String,
-                    let nickname = user["nickname"] as? String,
-                    let pusherID = user["pusher_id"] as? String {
-                        let username = user["username"] as? String
-                        let avatarURLString = user["avatar_url"] as? String
-                        return LoginUser(accessToken: accessToken, userID: userID, username: username, nickname: nickname, avatarURLString: avatarURLString, pusherID: pusherID)
-                }
-            }
-        }
-
-        return nil
+        return LoginUser.fromJSONDictionary(data)
     }
 
     let resource = jsonResource(path: "/v1/registration/update", method: .PUT, requestParameters: requestParameters, parse: parse)
@@ -282,9 +302,9 @@ public enum SkillSet: Int {
     public var name: String {
         switch self {
         case .Master:
-            return NSLocalizedString("Master", comment: "")
+            return String.trans_titleMaster
         case .Learning:
-            return NSLocalizedString("Learning", comment: "")
+            return String.trans_titleLearning
         }
     }
 
@@ -465,12 +485,12 @@ public enum VerifyCodeMethod: String {
     case Call = "call"
 }
 
-public func sendVerifyCodeOfMobile(mobile: String, withAreaCode areaCode: String, useMethod method: VerifyCodeMethod, failureHandler: FailureHandler?, completion: Bool -> Void) {
+public func requestSendVerifyCodeOfMobilePhone(mobilePhone: MobilePhone, useMethod method: VerifyCodeMethod, failureHandler: FailureHandler?, completion: Bool -> Void) {
 
     let requestParameters: JSONDictionary = [
-        "mobile": mobile,
-        "phone_code": areaCode,
-        "method": method.rawValue
+        "phone_code": mobilePhone.areaCode,
+        "mobile": mobilePhone.number,
+        "method": method.rawValue,
     ]
 
     let parse: JSONDictionary -> Bool? = { data in
@@ -482,11 +502,11 @@ public func sendVerifyCodeOfMobile(mobile: String, withAreaCode areaCode: String
     apiRequest({_ in}, baseURL: yepBaseURL, resource: resource, failure: failureHandler, completion: completion)
 }
 
-public func sendVerifyCodeOfNewMobile(mobile: String, withAreaCode areaCode: String, useMethod method: VerifyCodeMethod, failureHandler: FailureHandler?, completion: () -> Void) {
+public func requestSendVerifyCodeOfNewMobilePhone(mobilePhone: MobilePhone, useMethod method: VerifyCodeMethod, failureHandler: FailureHandler?, completion: () -> Void) {
 
     let requestParameters: JSONDictionary = [
-        "mobile": mobile,
-        "phone_code": areaCode,
+        "phone_code": mobilePhone.areaCode,
+        "mobile": mobilePhone.number,
         "method": method.rawValue,
     ]
 
@@ -499,11 +519,11 @@ public func sendVerifyCodeOfNewMobile(mobile: String, withAreaCode areaCode: Str
     apiRequest({_ in}, baseURL: yepBaseURL, resource: resource, failure: failureHandler, completion: completion)
 }
 
-public func comfirmNewMobile(mobile: String, withAreaCode areaCode: String, verifyCode: String, failureHandler: FailureHandler?, completion: () -> Void) {
+public func confirmNewMobilePhone(mobilePhone: MobilePhone, withVerifyCode verifyCode: String, failureHandler: FailureHandler?, completion: () -> Void) {
 
     let requestParameters: JSONDictionary = [
-        "mobile": mobile,
-        "phone_code": areaCode,
+        "phone_code": mobilePhone.areaCode,
+        "mobile": mobilePhone.number,
         "token": verifyCode,
     ]
 
@@ -516,34 +536,20 @@ public func comfirmNewMobile(mobile: String, withAreaCode areaCode: String, veri
     apiRequest({_ in}, baseURL: yepBaseURL, resource: resource, failure: failureHandler, completion: completion)
 }
 
-public func loginByMobile(mobile: String, withAreaCode areaCode: String, verifyCode: String, failureHandler: FailureHandler?, completion: LoginUser -> Void) {
+public func loginByMobilePhone(mobilePhone: MobilePhone, withVerifyCode verifyCode: String, failureHandler: FailureHandler?, completion: LoginUser -> Void) {
 
     println("User login type is \(Config.clientType())")
     
     let requestParameters: JSONDictionary = [
-        "mobile": mobile,
-        "phone_code": areaCode,
+        "phone_code": mobilePhone.areaCode,
+        "mobile": mobilePhone.number,
         "verify_code": verifyCode,
         "client": Config.clientType(),
         "expiring": 0, // 永不过期
     ]
 
     let parse: JSONDictionary -> LoginUser? = { data in
-
-        if let accessToken = data["access_token"] as? String {
-            if let user = data["user"] as? [String: AnyObject] {
-                if
-                    let userID = user["id"] as? String,
-                    let nickname = user["nickname"] as? String,
-                    let pusherID = user["pusher_id"] as? String {
-                        let username = user["username"] as? String
-                        let avatarURLString = user["avatar_url"] as? String
-                        return LoginUser(accessToken: accessToken, userID: userID, username: username, nickname: nickname, avatarURLString: avatarURLString, pusherID: pusherID)
-                }
-            }
-        }
-        
-        return nil
+        return LoginUser.fromJSONDictionary(data)
     }
 
     let resource = jsonResource(path: "/v1/auth/token_by_mobile", method: .POST, requestParameters: requestParameters, parse: parse)
@@ -1152,11 +1158,11 @@ public enum DiscoveredUserSortStyle: String {
     public var name: String {
         switch self {
         case .Distance:
-            return NSLocalizedString("Nearby", comment: "")
+            return String.trans_titleNearby
         case .LastSignIn:
             return NSLocalizedString("Time", comment: "")
         case .Default:
-            return NSLocalizedString("Match", comment: "")
+            return String.trans_titleMatch
         }
     }
 
@@ -1735,9 +1741,11 @@ public func officialMessages(completion completion: Int -> Void) {
                                 }
 
                                 // 再设置 conversation，调节 hasUnreadMessages 需要判定 readed
-                                if message.conversation == nil && message.readed == false && message.createdUnixTime > conversation.updatedUnixTime {
-                                    conversation.hasUnreadMessages = true
-                                    conversation.updatedUnixTime = NSDate().timeIntervalSince1970
+                                if !conversation.hasUnreadMessages {
+                                    if message.conversation == nil && message.readed == false && message.createdUnixTime > conversation.olderUpdatedUnixTime {
+                                        conversation.hasUnreadMessages = true
+                                        conversation.updatedUnixTime = message.createdUnixTime
+                                    }
                                 }
                                 message.conversation = conversation
 
@@ -1764,13 +1772,15 @@ public func unreadMessages(failureHandler failureHandler: FailureHandler?, compl
 
     guard let realm = try? Realm() else { return }
 
-    let _latestMessage = realm.objects(Message).sorted("createdUnixTime", ascending: false).first
-
     let latestMessage = latestValidMessageInRealm(realm)
+
+    /*
+    let _latestMessage = realm.objects(Message).sorted("createdUnixTime", ascending: false).first
 
     println("_latestMessage: \(_latestMessage?.messageID), \(_latestMessage?.createdUnixTime)")
     println("+latestMessage: \(latestMessage?.messageID), \(latestMessage?.createdUnixTime)")
     println("*now: \(NSDate().timeIntervalSince1970)")
+     */
 
     unreadMessagesAfterMessageWithID(latestMessage?.messageID, failureHandler: failureHandler, completion: completion)
 }
@@ -1867,10 +1877,33 @@ public func unreadMessagesAfterMessageWithID(messageID: String?, failureHandler:
     })
 }
 
-public struct Recipient {
+public func ==(lhs: Recipient, rhs: Recipient) -> Bool {
+    return lhs.ID == rhs.ID && lhs.type == rhs.type
+}
+
+public struct Recipient: Equatable {
 
     public let type: ConversationType
     public let ID: String
+
+    public init(type: ConversationType, ID: String) {
+        self.type = type
+        self.ID = ID
+    }
+
+    public init?(info: JSONDictionary) {
+        guard let typeNameForServer = info["recipient_type"] as? String else {
+            return nil
+        }
+        guard let conversationType = ConversationType(nameForServer: typeNameForServer) else {
+            return nil
+        }
+        guard let ID = info["recipient_id"] as? String else {
+            return nil
+        }
+        self.type = conversationType
+        self.ID = ID
+    }
 
     public func conversationInRealm(realm: Realm) -> Conversation? {
 
@@ -2053,32 +2086,32 @@ public func createMessageWithMessageInfo(messageInfo: JSONDictionary, failureHan
     */
 }
 
-public func sendText(text: String, toRecipient recipientID: String, recipientType: String, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
+public func sendText(text: String, toRecipient recipient: Recipient, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
 
     let fillMoreInfo: JSONDictionary -> JSONDictionary = { info in
         var moreInfo = info
         moreInfo["text_content"] = text
         return moreInfo
     }
-    createAndSendMessageWithMediaType(.Text, inFilePath: nil, orFileData: nil, metaData: nil, fillMoreInfo: fillMoreInfo, toRecipient: recipientID, recipientType: recipientType, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
+    createAndSendMessageWithMediaType(.Text, inFilePath: nil, orFileData: nil, metaData: nil, fillMoreInfo: fillMoreInfo, toRecipient: recipient, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
 }
 
-public func sendImageInFilePath(filePath: String?, orFileData fileData: NSData?, metaData: String?, toRecipient recipientID: String, recipientType: String, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
+public func sendImageInFilePath(filePath: String?, orFileData fileData: NSData?, metaData: String?, toRecipient recipient: Recipient, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
 
-    createAndSendMessageWithMediaType(.Image, inFilePath: filePath, orFileData: fileData, metaData: metaData, fillMoreInfo: nil, toRecipient: recipientID, recipientType: recipientType, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
+    createAndSendMessageWithMediaType(.Image, inFilePath: filePath, orFileData: fileData, metaData: metaData, fillMoreInfo: nil, toRecipient: recipient, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
 }
 
-public func sendAudioInFilePath(filePath: String?, orFileData fileData: NSData?, metaData: String?, toRecipient recipientID: String, recipientType: String, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
+public func sendAudioInFilePath(filePath: String?, orFileData fileData: NSData?, metaData: String?, toRecipient recipient: Recipient, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
 
-    createAndSendMessageWithMediaType(.Audio, inFilePath: filePath, orFileData: fileData, metaData: metaData, fillMoreInfo: nil, toRecipient: recipientID, recipientType: recipientType, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
+    createAndSendMessageWithMediaType(.Audio, inFilePath: filePath, orFileData: fileData, metaData: metaData, fillMoreInfo: nil, toRecipient: recipient, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
 }
 
-public func sendVideoInFilePath(filePath: String?, orFileData fileData: NSData?, metaData: String?, toRecipient recipientID: String, recipientType: String, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
+public func sendVideoInFilePath(filePath: String?, orFileData fileData: NSData?, metaData: String?, toRecipient recipient: Recipient, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
 
-    createAndSendMessageWithMediaType(.Video, inFilePath: filePath, orFileData: fileData, metaData: metaData, fillMoreInfo: nil, toRecipient: recipientID, recipientType: recipientType, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
+    createAndSendMessageWithMediaType(.Video, inFilePath: filePath, orFileData: fileData, metaData: metaData, fillMoreInfo: nil, toRecipient: recipient, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
 }
 
-public func sendLocationWithLocationInfo(locationInfo: PickLocationViewControllerLocation.Info, toRecipient recipientID: String, recipientType: String, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
+public func sendLocationWithLocationInfo(locationInfo: PickLocationViewControllerLocation.Info, toRecipient recipient: Recipient, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
 
     let fillMoreInfo: JSONDictionary -> JSONDictionary = { info in
         var moreInfo = info
@@ -2090,10 +2123,10 @@ public func sendLocationWithLocationInfo(locationInfo: PickLocationViewControlle
         return moreInfo
     }
 
-    createAndSendMessageWithMediaType(.Location, inFilePath: nil, orFileData: nil, metaData: nil, fillMoreInfo: fillMoreInfo, toRecipient: recipientID, recipientType: recipientType, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
+    createAndSendMessageWithMediaType(.Location, inFilePath: nil, orFileData: nil, metaData: nil, fillMoreInfo: fillMoreInfo, toRecipient: recipient, afterCreatedMessage: afterCreatedMessage, failureHandler: failureHandler, completion: completion)
 }
 
-public func createAndSendMessageWithMediaType(mediaType: MessageMediaType, inFilePath filePath: String?, orFileData fileData: NSData?, metaData: String?, fillMoreInfo: (JSONDictionary -> JSONDictionary)?, toRecipient recipientID: String, recipientType: String, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
+public func createAndSendMessageWithMediaType(mediaType: MessageMediaType, inFilePath filePath: String?, orFileData fileData: NSData?, metaData: String?, fillMoreInfo: (JSONDictionary -> JSONDictionary)?, toRecipient recipient: Recipient, afterCreatedMessage: (Message) -> Void, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
     // 因为 message_id 必须来自远端，线程无法切换，所以这里暂时没用 realmQueue // TOOD: 也许有办法
 
     guard let realm = try? Realm() else {
@@ -2134,13 +2167,13 @@ public func createAndSendMessageWithMediaType(mediaType: MessageMediaType, inFil
 
     let _ = try? realm.write {
 
-        if recipientType == "User" {
-            if let withFriend = userWithUserID(recipientID, inRealm: realm) {
+        switch recipient.type {
+        case .OneToOne:
+            if let withFriend = userWithUserID(recipient.ID, inRealm: realm) {
                 conversation = withFriend.conversation
             }
-
-        } else {
-            if let withGroup = groupWithGroupID(recipientID, inRealm: realm) {
+        case .Group:
+            if let withGroup = groupWithGroupID(recipient.ID, inRealm: realm) {
                 conversation = withGroup.conversation
             }
         }
@@ -2148,17 +2181,15 @@ public func createAndSendMessageWithMediaType(mediaType: MessageMediaType, inFil
         if conversation == nil {
             let newConversation = Conversation()
 
-            if recipientType == "User" {
-                newConversation.type = ConversationType.OneToOne.rawValue
+            newConversation.type = recipient.type.rawValue
 
-                if let withFriend = userWithUserID(recipientID, inRealm: realm) {
+            switch recipient.type {
+            case .OneToOne:
+                if let withFriend = userWithUserID(recipient.ID, inRealm: realm) {
                     newConversation.withFriend = withFriend
                 }
-
-            } else {
-                newConversation.type = ConversationType.Group.rawValue
-
-                if let withGroup = groupWithGroupID(recipientID, inRealm: realm) {
+            case .Group:
+                if let withGroup = groupWithGroupID(recipient.ID, inRealm: realm) {
                     newConversation.withGroup = withGroup
                 }
             }
@@ -2182,8 +2213,8 @@ public func createAndSendMessageWithMediaType(mediaType: MessageMediaType, inFil
     }
 
     var messageInfo: JSONDictionary = [
-        "recipient_id": recipientID,
-        "recipient_type": recipientType,
+        "recipient_id": recipient.ID,
+        "recipient_type": recipient.type.nameForServer,
         "media_type": mediaType.description,
     ]
 
@@ -2215,7 +2246,7 @@ public func createAndSendMessageWithMediaType(mediaType: MessageMediaType, inFil
     Config.sentMessageSoundEffectAction?()
 
     // 下面开始真正的消息发送
-    sendMessage(message, inFilePath: filePath, orFileData: fileData, metaData: metaData, fillMoreInfo: fillMoreInfo, toRecipient: recipientID, recipientType: recipientType, failureHandler: { (reason, errorMessage) in
+    sendMessage(message, inFilePath: filePath, orFileData: fileData, metaData: metaData, fillMoreInfo: fillMoreInfo, toRecipient: recipient, failureHandler: { (reason, errorMessage) in
 
         failureHandler?(reason: reason, errorMessage: errorMessage)
 
@@ -2233,178 +2264,171 @@ public func createAndSendMessageWithMediaType(mediaType: MessageMediaType, inFil
     }, completion: completion)
 }
 
-public func sendMessage(message: Message, inFilePath filePath: String?, orFileData fileData: NSData?, metaData: String?, fillMoreInfo: (JSONDictionary -> JSONDictionary)?, toRecipient recipientID: String, recipientType: String, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
+public func sendMessage(message: Message, inFilePath filePath: String?, orFileData fileData: NSData?, metaData: String?, fillMoreInfo: (JSONDictionary -> JSONDictionary)?, toRecipient recipient: Recipient, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
 
-    if let mediaType = MessageMediaType(rawValue: message.mediaType) {
+    guard let mediaType = MessageMediaType(rawValue: message.mediaType) else {
+        return
+    }
 
-        let tempMessageID = NSUUID().UUIDString
-        SendingMessagePool.addMessage(tempMesssageID: tempMessageID)
+    let tempMessageID = NSUUID().UUIDString
+    SendingMessagePool.addMessage(tempMesssageID: tempMessageID)
 
-        var messageInfo: JSONDictionary = [
-            "recipient_id": recipientID,
-            "recipient_type": recipientType,
-            "media_type": mediaType.description,
-            "random_id": tempMessageID,
-        ]
+    var messageInfo: JSONDictionary = [
+        "recipient_id": recipient.ID,
+        "recipient_type": recipient.type.nameForServer,
+        "media_type": mediaType.description,
+        "random_id": tempMessageID,
+    ]
 
-        if let fillMoreInfo = fillMoreInfo {
-            messageInfo = fillMoreInfo(messageInfo)
+    if let fillMoreInfo = fillMoreInfo {
+        messageInfo = fillMoreInfo(messageInfo)
+    }
+
+    switch mediaType {
+
+    case .Text, .Location:
+
+        createMessageWithMessageInfo(messageInfo, failureHandler: failureHandler, completion: { messageID in
+
+            println("send messageID: \(messageID), \(NSDate().timeIntervalSince1970)")
+
+            SafeDispatch.async {
+                let realm = message.realm
+
+                let _ = try? realm?.write {
+                    message.messageID = messageID
+                    message.sendState = MessageSendState.Successed.rawValue
+                }
+
+                completion(success: true)
+
+                NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageStateChanged, object: nil)
+            }
+        })
+
+    default:
+
+        var source: UploadAttachment.Source! // TODO: refactor
+        if let filePath = filePath {
+            source = .FilePath(filePath)
+        }
+        if let fileData = fileData {
+            source = .Data(fileData)
         }
 
-        switch mediaType {
+        let uploadAttachment = UploadAttachment(type: .Message, source: source, fileExtension: mediaType.fileExtension!, metaDataString: metaData)
 
-        case .Text, .Location:
+        tryUploadAttachment(uploadAttachment, failureHandler: failureHandler, completion: { uploadedAttachment in
 
-            createMessageWithMessageInfo(messageInfo, failureHandler: failureHandler, completion: { messageID in
+            messageInfo["attachment_id"] = uploadedAttachment.ID
 
-                println("send messageID: \(messageID), \(NSDate().timeIntervalSince1970)")
-
-                SafeDispatch.async {
-                    let realm = message.realm
-
-                    let _ = try? realm?.write {
-                        message.messageID = messageID
-                        message.sendState = MessageSendState.Successed.rawValue
-                    }
-
-                    completion(success: true)
-
-                    NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageStateChanged, object: nil)
-                }
-            })
-
-        default:
-
-            var source: UploadAttachment.Source! // TODO: refactor
-            if let filePath = filePath {
-                source = .FilePath(filePath)
-            }
-            if let fileData = fileData {
-                source = .Data(fileData)
-            }
-
-            let uploadAttachment = UploadAttachment(type: .Message, source: source, fileExtension: mediaType.fileExtension!, metaDataString: metaData)
-
-            tryUploadAttachment(uploadAttachment, failureHandler: failureHandler, completion: { uploadedAttachment in
-
-                messageInfo["attachment_id"] = uploadedAttachment.ID
-
-                let doCreateMessage = {
-                    createMessageWithMessageInfo(messageInfo, failureHandler: failureHandler, completion: { messageID in
-                        SafeDispatch.async {
-                            let realm = message.realm
-                            let _ = try? realm?.write {
-                                message.messageID = messageID
-                                message.sendState = MessageSendState.Successed.rawValue
-                            }
-
-                            completion(success: true)
-
-                            NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageStateChanged, object: nil)
+            let doCreateMessage = {
+                createMessageWithMessageInfo(messageInfo, failureHandler: failureHandler, completion: { messageID in
+                    SafeDispatch.async {
+                        let realm = message.realm
+                        let _ = try? realm?.write {
+                            message.messageID = messageID
+                            message.sendState = MessageSendState.Successed.rawValue
                         }
-                    })
-                }
 
-                doCreateMessage()
-            })
-        }
+                        completion(success: true)
+
+                        NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageStateChanged, object: nil)
+                    }
+                })
+            }
+
+            doCreateMessage()
+        })
     }
 }
 
 public func resendMessage(message: Message, failureHandler: FailureHandler?, completion: (success: Bool) -> Void) {
 
-    var recipientID: String?
-    var recipientType: String?
+    guard let conversation = message.conversation else {
+        return
+    }
 
-    if let conversation = message.conversation {
-        if conversation.type == ConversationType.OneToOne.rawValue {
-            recipientID = conversation.withFriend?.userID
-            recipientType = ConversationType.OneToOne.nameForServer
+    guard let recipient = conversation.recipient else {
+        return
+    }
 
-        } else if conversation.type == ConversationType.Group.rawValue {
-            recipientID = conversation.withGroup?.groupID
-            recipientType = ConversationType.Group.nameForServer
+    guard let messageMediaType = MessageMediaType(rawValue: message.mediaType) else {
+        return
+    }
+
+    // before resend, recover MessageSendState
+
+    SafeDispatch.async {
+
+        let realm = message.realm
+
+        let _ = try? realm?.write {
+            message.sendState = MessageSendState.NotSend.rawValue
+        }
+
+        NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageStateChanged, object: nil)
+    }
+
+    // also, if resend failed, we need set MessageSendState
+
+    let resendFailureHandler: FailureHandler = { reason, errorMessage in
+
+        failureHandler?(reason: reason, errorMessage: errorMessage)
+
+        SafeDispatch.async {
+
+            let realm = message.realm
+
+            let _ = try? realm?.write {
+                message.sendState = MessageSendState.Failed.rawValue
+            }
+
+            NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageStateChanged, object: nil)
         }
     }
 
-    if let
-        recipientID = recipientID,
-        recipientType = recipientType,
-        messageMediaType = MessageMediaType(rawValue: message.mediaType) {
+    switch messageMediaType {
 
-            // before resend, recover MessageSendState
+    case .Text:
 
-            SafeDispatch.async {
+        let fillMoreInfo: JSONDictionary -> JSONDictionary = { info in
+            var moreInfo = info
+            moreInfo["text_content"] = message.textContent
+            return moreInfo
+        }
 
-                let realm = message.realm
+        sendMessage(message, inFilePath: nil, orFileData: nil, metaData: nil, fillMoreInfo: fillMoreInfo, toRecipient: recipient, failureHandler: resendFailureHandler, completion: completion)
 
-                let _ = try? realm?.write {
-                    message.sendState = MessageSendState.NotSend.rawValue
-                }
+    case .Image:
+        let filePath = message.imageFileURL?.path
 
-                NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageStateChanged, object: nil)
+        sendMessage(message, inFilePath: filePath, orFileData: nil, metaData: message.mediaMetaData?.string, fillMoreInfo: nil, toRecipient: recipient, failureHandler: resendFailureHandler, completion: completion)
+
+    case .Video:
+        let filePath = message.videoFileURL?.path
+
+        sendMessage(message, inFilePath: filePath, orFileData: nil, metaData: message.mediaMetaData?.string, fillMoreInfo: nil, toRecipient: recipient, failureHandler: resendFailureHandler, completion: completion)
+
+    case .Audio:
+        let filePath = message.audioFileURL?.path
+
+        sendMessage(message, inFilePath: filePath, orFileData: nil, metaData: message.mediaMetaData?.string, fillMoreInfo: nil, toRecipient: recipient, failureHandler: resendFailureHandler, completion: completion)
+
+    case .Location:
+        if let coordinate = message.coordinate {
+            let fillMoreInfo: JSONDictionary -> JSONDictionary = { info in
+                var moreInfo = info
+                moreInfo["longitude"] = coordinate.longitude
+                moreInfo["latitude"] = coordinate.latitude
+                return moreInfo
             }
-
-            // also, if resend failed, we need set MessageSendState
-
-            let resendFailureHandler: FailureHandler = { reason, errorMessage in
-
-                failureHandler?(reason: reason, errorMessage: errorMessage)
-
-                SafeDispatch.async {
-
-                    let realm = message.realm
-
-                    let _ = try? realm?.write {
-                        message.sendState = MessageSendState.Failed.rawValue
-                    }
-
-                    NSNotificationCenter.defaultCenter().postNotificationName(Config.Message.Notification.MessageStateChanged, object: nil)
-                }
-            }
-
-            switch messageMediaType {
-
-            case .Text:
-
-                let fillMoreInfo: JSONDictionary -> JSONDictionary = { info in
-                    var moreInfo = info
-                    moreInfo["text_content"] = message.textContent
-                    return moreInfo
-                }
-
-                sendMessage(message, inFilePath: nil, orFileData: nil, metaData: nil, fillMoreInfo: fillMoreInfo, toRecipient: recipientID, recipientType: recipientType, failureHandler: resendFailureHandler, completion: completion)
-
-            case .Image:
-                let filePath = message.imageFileURL?.path
-
-                sendMessage(message, inFilePath: filePath, orFileData: nil, metaData: message.mediaMetaData?.string, fillMoreInfo: nil, toRecipient: recipientID, recipientType: recipientType, failureHandler: resendFailureHandler, completion: completion)
-
-            case .Video:
-                let filePath = message.videoFileURL?.path
-
-                sendMessage(message, inFilePath: filePath, orFileData: nil, metaData: message.mediaMetaData?.string, fillMoreInfo: nil, toRecipient: recipientID, recipientType: recipientType, failureHandler: resendFailureHandler, completion: completion)
-
-            case .Audio:
-                let filePath = message.audioFileURL?.path
-
-                sendMessage(message, inFilePath: filePath, orFileData: nil, metaData: message.mediaMetaData?.string, fillMoreInfo: nil, toRecipient: recipientID, recipientType: recipientType, failureHandler: resendFailureHandler, completion: completion)
-
-            case .Location:
-                if let coordinate = message.coordinate {
-                    let fillMoreInfo: JSONDictionary -> JSONDictionary = { info in
-                        var moreInfo = info
-                        moreInfo["longitude"] = coordinate.longitude
-                        moreInfo["latitude"] = coordinate.latitude
-                        return moreInfo
-                    }
-                    
-                    sendMessage(message, inFilePath: nil, orFileData: nil, metaData: nil, fillMoreInfo: fillMoreInfo, toRecipient: recipientID, recipientType: recipientType, failureHandler: resendFailureHandler, completion: completion)
-                }
-                
-            default:
-                break
-            }
+            
+            sendMessage(message, inFilePath: nil, orFileData: nil, metaData: nil, fillMoreInfo: fillMoreInfo, toRecipient: recipient, failureHandler: resendFailureHandler, completion: completion)
+        }
+        
+    default:
+        break
     }
 }
 
@@ -2465,7 +2489,7 @@ public enum FeedSortStyle: String {
     public var name: String {
         switch self {
         case .Distance:
-            return NSLocalizedString("Nearby", comment: "")
+            return String.trans_titleNearby
         case .Time:
             return NSLocalizedString("Time", comment: "")
         case .Match:
@@ -2771,7 +2795,7 @@ public struct DiscoveredFeed: Hashable {
         var distanceString: String?
         if let distance = distance {
             if distance < 1 {
-                distanceString = NSLocalizedString("Nearby", comment: "")
+                distanceString = String.trans_titleNearby
             } else {
                 distanceString = "\(distance.yep_format(".1")) km"
             }
@@ -2911,16 +2935,16 @@ public let parseFeed: JSONDictionary -> DiscoveredFeed? = { data in
     return nil
 }
 
-public let parseFeeds: JSONDictionary -> (validFeeds: [DiscoveredFeed], originalFeedsCount: Int)? = { data in
+public let parseFeeds: JSONDictionary -> [DiscoveredFeed?]? = { data in
 
     if let feedsData = data["topics"] as? [JSONDictionary] {
-        return (validFeeds: feedsData.map({ DiscoveredFeed.fromFeedInfo($0, groupInfo: nil) }).flatMap({ $0 }), originalFeedsCount: feedsData.count)
+        return feedsData.map({ DiscoveredFeed.fromFeedInfo($0, groupInfo: nil) })
     }
 
     return nil
 }
 
-public func discoverFeedsWithSortStyle(sortStyle: FeedSortStyle, skill: Skill?, pageIndex: Int, perPage: Int, maxFeedID: String?, failureHandler: ((Reason, String?) -> Void)?, completion: (validFeeds: [DiscoveredFeed], originalFeedsCount: Int) -> Void) {
+public func discoverFeedsWithSortStyle(sortStyle: FeedSortStyle, skill: Skill?, pageIndex: Int, perPage: Int, maxFeedID: String?, failureHandler: ((Reason, String?) -> Void)?, completion: (feeds: [DiscoveredFeed?]) -> Void) {
 
     var requestParameters: JSONDictionary = [
         "sort": sortStyle.rawValue,
@@ -2936,7 +2960,7 @@ public func discoverFeedsWithSortStyle(sortStyle: FeedSortStyle, skill: Skill?, 
         requestParameters["max_id"] = maxFeedID
     }
 
-    let parse: JSONDictionary -> (validFeeds: [DiscoveredFeed], originalFeedsCount: Int)? = { data in
+    let parse: JSONDictionary -> ([DiscoveredFeed?])? = { data in
 
         // 只离线第一页，且无 skill
         if pageIndex == 1 && skill == nil {
@@ -2961,10 +2985,10 @@ public func discoverFeedsWithSortStyle(sortStyle: FeedSortStyle, skill: Skill?, 
     apiRequest({_ in}, baseURL: yepBaseURL, resource: resource, failure: failureHandler, completion: completion)
 }
 
-public func feedsWithKeyword(keyword: String, skillID: String?, userID: String?, pageIndex: Int, perPage: Int, failureHandler: FailureHandler?, completion: (validFeeds: [DiscoveredFeed], originalFeedsCount: Int) -> Void) {
+public func feedsWithKeyword(keyword: String, skillID: String?, userID: String?, pageIndex: Int, perPage: Int, failureHandler: FailureHandler?, completion: (feeds: [DiscoveredFeed?]) -> Void) {
 
     guard !keyword.isEmpty else {
-        completion(validFeeds: [], originalFeedsCount: 0)
+        completion(feeds: [])
         return
     }
 
@@ -2982,7 +3006,7 @@ public func feedsWithKeyword(keyword: String, skillID: String?, userID: String?,
         requestParameters["user_id"] = userID
     }
 
-    let parse: JSONDictionary -> (validFeeds: [DiscoveredFeed], originalFeedsCount: Int)? = { data in
+    let parse: JSONDictionary -> [DiscoveredFeed?]? = { data in
         return parseFeeds(data)
     }
 
@@ -3016,7 +3040,7 @@ public func feedWithSharedToken(token: String, failureHandler: FailureHandler?, 
     apiRequest({_ in}, baseURL: yepBaseURL, resource: resource, failure: failureHandler, completion: completion)
 }
 
-public func myFeedsAtPageIndex(pageIndex: Int, perPage: Int, failureHandler: FailureHandler?, completion: (validFeeds: [DiscoveredFeed], originalFeedsCount: Int) -> Void) {
+public func myFeedsAtPageIndex(pageIndex: Int, perPage: Int, failureHandler: FailureHandler?, completion: (feeds: [DiscoveredFeed?]) -> Void) {
 
     let requestParameters: JSONDictionary = [
         "page": pageIndex,
@@ -3030,7 +3054,7 @@ public func myFeedsAtPageIndex(pageIndex: Int, perPage: Int, failureHandler: Fai
     apiRequest({_ in}, baseURL: yepBaseURL, resource: resource, failure: failureHandler, completion: completion)
 }
 
-public func feedsOfUser(userID: String, pageIndex: Int, perPage: Int, failureHandler: FailureHandler?, completion: (validFeeds: [DiscoveredFeed], originalFeedsCount: Int) -> Void) {
+public func feedsOfUser(userID: String, pageIndex: Int, perPage: Int, failureHandler: FailureHandler?, completion: (feeds: [DiscoveredFeed?]) -> Void) {
 
     let requestParameters: JSONDictionary = [
         "page": pageIndex,

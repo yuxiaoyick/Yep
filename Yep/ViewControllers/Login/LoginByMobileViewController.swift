@@ -13,22 +13,16 @@ import Ruler
 import RxSwift
 import RxCocoa
 
-final class LoginByMobileViewController: BaseViewController {
+final class LoginByMobileViewController: BaseInputMobileViewController {
 
     private lazy var disposeBag = DisposeBag()
 
     @IBOutlet private weak var pickMobileNumberPromptLabel: UILabel!
     @IBOutlet private weak var pickMobileNumberPromptLabelTopConstraint: NSLayoutConstraint!
-    
-    @IBOutlet weak var areaCodeTextField: BorderTextField!
-    @IBOutlet weak var areaCodeTextFieldWidthConstraint: NSLayoutConstraint!
 
-    @IBOutlet weak var mobileNumberTextField: BorderTextField!
-    @IBOutlet private weak var mobileNumberTextFieldTopConstraint: NSLayoutConstraint!
-    
     private lazy var nextButton: UIBarButtonItem = {
         let button = UIBarButtonItem()
-        button.title = NSLocalizedString("Next", comment: "")
+        button.title = String.trans_buttonNextStep
         button.rx_tap
             .subscribeNext({ [weak self] in self?.tryShowLoginVerifyMobile() })
             .addDisposableTo(self.disposeBag)
@@ -42,11 +36,9 @@ final class LoginByMobileViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        animatedOnNavigationBar = false
-
         view.backgroundColor = UIColor.yepViewBackgroundColor()
 
-        navigationItem.titleView = NavigationTitleLabel(title: NSLocalizedString("Login", comment: ""))
+        navigationItem.titleView = NavigationTitleLabel(title: String.trans_titleLogin)
    
         navigationItem.rightBarButtonItem = nextButton
 
@@ -69,7 +61,6 @@ final class LoginByMobileViewController: BaseViewController {
             .addDisposableTo(disposeBag)
 
         pickMobileNumberPromptLabelTopConstraint.constant = Ruler.iPhoneVertical(30, 50, 60, 60).value
-        mobileNumberTextFieldTopConstraint.constant = Ruler.iPhoneVertical(30, 40, 50, 50).value
     }
 
     override func viewWillAppear(animated: Bool) {
@@ -86,51 +77,57 @@ final class LoginByMobileViewController: BaseViewController {
 
     // MARK: Actions
 
+    override func tappedKeyboardReturn() {
+        tryShowLoginVerifyMobile()
+    }
+    
     func tryShowLoginVerifyMobile() {
         
         view.endEditing(true)
 
-        guard let areaCode = areaCodeTextField.text, mobile = mobileNumberTextField.text else {
+        guard let areaCode = areaCodeTextField.text, number = mobileNumberTextField.text else {
             return
         }
+        let mobilePhone = MobilePhone(areaCode: areaCode, number: number)
+        sharedStore().dispatch(MobilePhoneUpdateAction(mobilePhone: mobilePhone))
 
         YepHUD.showActivityIndicator()
         
-        sendVerifyCodeOfMobile(mobile, withAreaCode: areaCode, useMethod: .SMS, failureHandler: { [weak self] reason, errorMessage in
+        requestSendVerifyCodeOfMobilePhone(mobilePhone, useMethod: .SMS, failureHandler: { reason, errorMessage in
             defaultFailureHandler(reason: reason, errorMessage: errorMessage)
 
             YepHUD.hideActivityIndicator()
 
             if case .NoSuccessStatusCode(_, let errorCode) = reason where errorCode == .NotYetRegistered {
 
-                YepAlert.confirmOrCancel(title: NSLocalizedString("Notice", comment: ""), message: String(format: NSLocalizedString("This number (%@) not yet registered! Would you like to register it now?", comment: ""), "+\(areaCode) \(mobile)"), confirmTitle: NSLocalizedString("OK", comment: ""), cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { [weak self] in
+                YepAlert.confirmOrCancel(title: String.trans_titleNotice, message: String(format: NSLocalizedString("This number (%@) not yet registered! Would you like to register it now?", comment: ""), mobilePhone.fullNumber), confirmTitle: String.trans_titleOK, cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { [weak self] in
 
-                    self?.performSegueWithIdentifier("showRegisterPickName", sender: ["mobile" : mobile, "areaCode": areaCode])
+                    self?.performSegueWithIdentifier("showRegisterPickName", sender: nil)
 
                 }, cancelAction: {
                 })
 
             } else {
                 if let errorMessage = errorMessage {
-                    YepAlert.alertSorry(message: errorMessage, inViewController: self, withDismissAction: { () -> Void in
-                        SafeDispatch.async {
+                    YepAlert.alertSorry(message: errorMessage, inViewController: self, withDismissAction: {
+                        SafeDispatch.async { [weak self] in
                             self?.mobileNumberTextField.becomeFirstResponder()
                         }
                     })
                 }
             }
 
-        }, completion: { [weak self] success in
+        }, completion: { success in
 
             YepHUD.hideActivityIndicator()
 
             if success {
-                SafeDispatch.async {
+                SafeDispatch.async { [weak self] in
                     self?.showLoginVerifyMobile()
                 }
 
             } else {
-                YepAlert.alertSorry(message: NSLocalizedString("Failed to send verification code!", comment: ""), inViewController: self, withDismissAction: { [weak self] in
+                YepAlert.alertSorry(message: String.trans_promptRequestSendVerificationCodeFailed, inViewController: self, withDismissAction: { [weak self] in
                     self?.mobileNumberTextField.becomeFirstResponder()
                 })
             }
@@ -138,45 +135,14 @@ final class LoginByMobileViewController: BaseViewController {
     }
 
     private func showLoginVerifyMobile() {
-        guard let areaCode = areaCodeTextField.text, mobile = mobileNumberTextField.text else {
+
+        guard let areaCode = areaCodeTextField.text, number = mobileNumberTextField.text else {
             return
         }
+        let mobilePhone = MobilePhone(areaCode: areaCode, number: number)
+        sharedStore().dispatch(MobilePhoneUpdateAction(mobilePhone: mobilePhone))
 
-        self.performSegueWithIdentifier("showLoginVerifyMobile", sender: ["mobile" : mobile, "areaCode": areaCode])
+        self.performSegueWithIdentifier("showLoginVerifyMobile", sender: nil)
     }
-
-    // MARK: Navigation
-
-    override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
-
-        guard let identifier = segue.identifier else {
-            return
-        }
-
-        switch identifier {
-
-        case "showLoginVerifyMobile":
-
-            if let info = sender as? [String: String] {
-                let vc = segue.destinationViewController as! LoginVerifyMobileViewController
-
-                vc.mobile = info["mobile"]
-                vc.areaCode = info["areaCode"]
-            }
-
-        case "showRegisterPickName":
-
-            if let info = sender as? [String: String] {
-                let vc = segue.destinationViewController as! RegisterPickNameViewController
-
-                vc.mobile = info["mobile"]
-                vc.areaCode = info["areaCode"]
-            }
-
-        default:
-            break
-        }
-    }
-
 }
 

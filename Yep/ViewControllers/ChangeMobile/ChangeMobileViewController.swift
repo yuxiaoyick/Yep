@@ -13,7 +13,7 @@ import Ruler
 import RxSwift
 import RxCocoa
 
-final class ChangeMobileViewController: UIViewController {
+final class ChangeMobileViewController: BaseInputMobileViewController {
 
     private lazy var disposeBag = DisposeBag()
     
@@ -23,15 +23,9 @@ final class ChangeMobileViewController: UIViewController {
     @IBOutlet private weak var currentMobileNumberPromptLabel: UILabel!
     @IBOutlet private weak var currentMobileNumberLabel: UILabel!
 
-    @IBOutlet weak var areaCodeTextField: BorderTextField!
-    @IBOutlet weak var areaCodeTextFieldWidthConstraint: NSLayoutConstraint!
-
-    @IBOutlet weak var mobileNumberTextField: BorderTextField!
-    @IBOutlet private weak var mobileNumberTextFieldTopConstraint: NSLayoutConstraint!
-
     private lazy var nextButton: UIBarButtonItem = {
         let button = UIBarButtonItem()
-        button.title = NSLocalizedString("Next", comment: "")
+        button.title = String.trans_buttonNextStep
         button.rx_tap
             .subscribeNext({ [weak self] in self?.tryShowVerifyChangedMobile() })
             .addDisposableTo(self.disposeBag)
@@ -70,7 +64,6 @@ final class ChangeMobileViewController: UIViewController {
             .addDisposableTo(disposeBag)
 
         changeMobileNumberPromptLabelTopConstraint.constant = Ruler.iPhoneVertical(30, 50, 60, 60).value
-        mobileNumberTextFieldTopConstraint.constant = Ruler.iPhoneVertical(30, 40, 50, 50).value
     }
 
     override func viewWillAppear(animated: Bool) {
@@ -93,33 +86,39 @@ final class ChangeMobileViewController: UIViewController {
 
     // MARK: Actions
 
+    override func tappedKeyboardReturn() {
+        tryShowVerifyChangedMobile()
+    }
+
     func tryShowVerifyChangedMobile() {
 
         view.endEditing(true)
 
-        guard let areaCode = areaCodeTextField.text, mobile = mobileNumberTextField.text else {
+        guard let areaCode = areaCodeTextField.text, number = mobileNumberTextField.text else {
             return
         }
+        let mobilePhone = MobilePhone(areaCode: areaCode, number: number)
+        sharedStore().dispatch(MobilePhoneUpdateAction(mobilePhone: mobilePhone))
 
         YepHUD.showActivityIndicator()
 
-        sendVerifyCodeOfNewMobile(mobile, withAreaCode: areaCode, useMethod: .SMS, failureHandler: { [weak self] reason, errorMessage in
+        requestSendVerifyCodeOfNewMobilePhone(mobilePhone, useMethod: .SMS, failureHandler: { reason, errorMessage in
             defaultFailureHandler(reason: reason, errorMessage: errorMessage)
 
             YepHUD.hideActivityIndicator()
 
-            let errorMessage = errorMessage ?? NSLocalizedString("Failed to send verification code!", comment: "")
-            YepAlert.alertSorry(message: errorMessage, inViewController: self, withDismissAction: { () -> Void in
-                SafeDispatch.async {
+            let message = errorMessage ?? String.trans_promptRequestSendVerificationCodeFailed
+            YepAlert.alertSorry(message: message, inViewController: self, withDismissAction: {
+                SafeDispatch.async { [weak self] in
                     self?.mobileNumberTextField.becomeFirstResponder()
                 }
             })
 
-        }, completion: { [weak self] in
+        }, completion: {
 
             YepHUD.hideActivityIndicator()
 
-            SafeDispatch.async {
+            SafeDispatch.async { [weak self] in
                 self?.showVerifyChangedMobile()
             }
         })
@@ -127,26 +126,13 @@ final class ChangeMobileViewController: UIViewController {
 
     private func showVerifyChangedMobile() {
 
-        guard let areaCode = areaCodeTextField.text, mobile = mobileNumberTextField.text else {
+        guard let areaCode = areaCodeTextField.text, number = mobileNumberTextField.text else {
             return
         }
+        let mobilePhone = MobilePhone(areaCode: areaCode, number: number)
+        sharedStore().dispatch(MobilePhoneUpdateAction(mobilePhone: mobilePhone))
 
-        performSegueWithIdentifier("showVerifyChangedMobile", sender: ["mobile" : mobile, "areaCode": areaCode])
-    }
-
-    // MARK: Navigation
-
-    override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
-
-        if segue.identifier == "showVerifyChangedMobile" {
-
-            if let info = sender as? [String: String] {
-                let vc = segue.destinationViewController as! VerifyChangedMobileViewController
-
-                vc.mobile = info["mobile"]
-                vc.areaCode = info["areaCode"]
-            }
-        }
+        performSegueWithIdentifier("showVerifyChangedMobile", sender: nil)
     }
 }
 

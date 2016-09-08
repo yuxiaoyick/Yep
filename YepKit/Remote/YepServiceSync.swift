@@ -17,14 +17,16 @@ public enum MessageAge: String {
 
 public func tryPostNewMessagesReceivedNotificationWithMessageIDs(messageIDs: [String], messageAge: MessageAge) {
 
-    if !messageIDs.isEmpty {
-        SafeDispatch.async {
-            let object = [
-                "messageIDs": messageIDs,
-                "messageAge": messageAge.rawValue,
-            ]
-            NSNotificationCenter.defaultCenter().postNotificationName(Config.Notification.newMessages, object: object)
-        }
+    guard !messageIDs.isEmpty else {
+        return
+    }
+
+    SafeDispatch.async {
+        let object = [
+            "messageIDs": messageIDs,
+            "messageAge": messageAge.rawValue,
+        ]
+        NSNotificationCenter.defaultCenter().postNotificationName(Config.Notification.newMessages, object: object)
     }
 }
 
@@ -771,7 +773,7 @@ public func syncUnreadMessagesAndDoFurtherAction(furtherAction: (messageIDs: [St
         }, completion: { allUnreadMessages in
             
             //println("\n allUnreadMessages: \(allUnreadMessages)")
-            println("Got unread message: \(allUnreadMessages.count)")
+            println("Got unread message.count: \(allUnreadMessages.count)")
 
             /*
             for message in allUnreadMessages {
@@ -1212,14 +1214,16 @@ public func syncMessageWithMessageInfo(messageInfo: JSONDictionary, messageAge: 
                             }
 
                             // 再设置 conversation，调节 hasUnreadMessages 需要判定 readed
-                            if message.conversation == nil && message.readed == false && message.createdUnixTime > conversation.updatedUnixTime {
+                            if !conversation.hasUnreadMessages {
+                                if message.conversation == nil && message.readed == false && message.createdUnixTime > conversation.olderUpdatedUnixTime {
 
-                                println("ThreeUnixTime: \nc:\(message.createdUnixTime)\nu:\(conversation.updatedUnixTime)\nn:\(NSDate().timeIntervalSince1970)")
+                                    println("ThreeUnixTime: \nc:\(message.createdUnixTime)\nu:\(conversation.updatedUnixTime)\nn:\(NSDate().timeIntervalSince1970)")
 
-                                // 不考虑特别旧的消息
-                                if message.createdUnixTime > (NSDate().timeIntervalSince1970 - 60*60*12) {
-                                    conversation.hasUnreadMessages = true
-                                    conversation.updatedUnixTime = NSDate().timeIntervalSince1970
+                                    // 不考虑特别旧的消息
+                                    if message.createdUnixTime > (NSDate().timeIntervalSince1970 - 60*60*12) {
+                                        conversation.hasUnreadMessages = true
+                                        conversation.updatedUnixTime = NSDate().timeIntervalSince1970
+                                    }
                                 }
                             }
                             message.conversation = conversation

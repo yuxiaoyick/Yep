@@ -213,7 +213,7 @@ final class ProfileViewController: SegueViewController {
                 if user.friendState == UserFriendState.Me.rawValue {
                     YepUserDefaults.introduction.bindListener(self.listener.introduction) { [weak self] introduction in
                         SafeDispatch.async {
-                            self?.introductionText = introduction ?? NSLocalizedString("No Introduction yet.", comment: "")
+                            self?.introductionText = introduction ?? String.trans_promptNoSelfIntroduction
                             self?.updateProfileCollectionView()
                         }
                     }
@@ -221,7 +221,7 @@ final class ProfileViewController: SegueViewController {
             }
         }
 
-        return introduction ?? NSLocalizedString("No Introduction yet.", comment: "")
+        return introduction ?? String.trans_promptNoSelfIntroduction
     }()
 
     private var masterSkills = [Skill]()
@@ -397,7 +397,7 @@ final class ProfileViewController: SegueViewController {
 
                 if me.masterSkills.count == 0 && me.learningSkills.count == 0 {
 
-                    YepAlert.confirmOrCancel(title: NSLocalizedString("Notice", comment: ""), message: NSLocalizedString("You don't have any skills!\nWould you like to pick some?", comment: ""), confirmTitle: NSLocalizedString("OK", comment: ""), cancelTitle: NSLocalizedString("Not now", comment: ""), inViewController: self, withConfirmAction: { [weak self] in
+                    YepAlert.confirmOrCancel(title: String.trans_titleNotice, message: NSLocalizedString("You don't have any skills!\nWould you like to pick some?", comment: ""), confirmTitle: String.trans_titleOK, cancelTitle: String.trans_titleNotNow, inViewController: self, withConfirmAction: { [weak self] in
                         self?.pickSkills()
                     }, cancelAction: {})
                 }
@@ -639,7 +639,6 @@ final class ProfileViewController: SegueViewController {
         }
 
         var thumbnail: UIImage?
-
         if let
             avatarURLString = profileUser?.avatarURLString,
             realm = try? Realm(),
@@ -654,35 +653,12 @@ final class ProfileViewController: SegueViewController {
 
         let info = MonkeyKing.Info(
             title: nickname,
-            description: NSLocalizedString("From Yep, with Skills.", comment: ""),
+            description: String.trans_shareFromYepWithSkills,
             thumbnail: thumbnail,
             media: .URL(profileURL)
         )
-
-        let sessionMessage = MonkeyKing.Message.WeChat(.Session(info: info))
-
-        let weChatSessionActivity = WeChatActivity(
-            type: .Session,
-            message: sessionMessage,
-            finish: { success in
-                println("share Profile to WeChat Session success: \(success)")
-            }
-        )
-
-        let timelineMessage = MonkeyKing.Message.WeChat(.Timeline(info: info))
-
-        let weChatTimelineActivity = WeChatActivity(
-            type: .Timeline,
-            message: timelineMessage,
-            finish: { success in
-                println("share Profile to WeChat Timeline success: \(success)")
-            }
-        )
-        
-        let activityViewController = UIActivityViewController(activityItems: ["\(nickname), \(NSLocalizedString("From Yep, with Skills.", comment: "")) \(profileURL)"], applicationActivities: [weChatSessionActivity, weChatTimelineActivity])
-        activityViewController.excludedActivityTypes = [UIActivityTypeMessage, UIActivityTypeMail]
-
-        self.presentViewController(activityViewController, animated: true, completion: nil)
+        let description = String.trans_shareUserFromYepWithSkills(nickname)
+        self.yep_share(info: info, defaultActivityItem: profileURL, description: description)
     }
 
     @objc private func tryShareMyProfile(sender: AnyObject?) {
@@ -691,7 +667,7 @@ final class ProfileViewController: SegueViewController {
             tryShareProfile()
 
         } else {
-            YepAlert.textInput(title: String.trans_titleCreateUsername, message: NSLocalizedString("In order to share your profile, create a unique username first.", comment: ""), placeholder: NSLocalizedString("use letters, numbers, and underscore", comment: ""), oldText: nil, confirmTitle: String.trans_titleCreate, cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { text in
+            YepAlert.textInput(title: String.trans_titleCreateUsername, message: String.trans_promptCreateUsername, placeholder: NSLocalizedString("use letters, numbers, and underscore", comment: ""), oldText: nil, confirmTitle: String.trans_titleCreate, cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { text in
 
                 let newUsername = text
 
@@ -1427,7 +1403,7 @@ extension ProfileViewController: UICollectionViewDataSource, UICollectionViewDel
                     yep_openURL(blogURL)
 
                 } else {
-                    YepAlert.textInput(title: NSLocalizedString("Set Blog", comment: ""), message: NSLocalizedString("Input your blog's URL.", comment: ""), placeholder: "example.com", oldText: nil, confirmTitle: NSLocalizedString("Set", comment: ""), cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { text in
+                    YepAlert.textInput(title: NSLocalizedString("Set Blog", comment: ""), message: String.trans_promptInputBlogURL, placeholder: "example.com", oldText: nil, confirmTitle: NSLocalizedString("Set", comment: ""), cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { text in
 
                         let blogURLString = text
 
@@ -1637,7 +1613,7 @@ extension ProfileViewController {
             })
             
         } else {
-            YepAlert.alertSorry(message: NSLocalizedString("OAuth Error", comment: ""), inViewController: self, withDismissAction: {})
+            YepAlert.alertSorry(message: String.trans_promptOAuthError, inViewController: self, withDismissAction: {})
         }
     }
 }

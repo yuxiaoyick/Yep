@@ -111,7 +111,7 @@ final class NewFeedViewController: SegueViewController {
         return imageView
     }()
 
-    private let placeholderOfFeed = NSLocalizedString("Introduce a thing, share an idea, describe a problem ...", comment: "")
+    private let placeholderOfFeed = String.trans_promptNewFeedPlaceholder
 
     private var isNeverInputMessage = true
     private var isDirty = false {
@@ -127,7 +127,7 @@ final class NewFeedViewController: SegueViewController {
     }
 
     private lazy var postButton: UIBarButtonItem = {
-        let button = UIBarButtonItem(title: NSLocalizedString("Post", comment: ""), style: .Plain, target: self, action: #selector(NewFeedViewController.tryPost(_:)))
+        let button = UIBarButtonItem(title: String.trans_buttonPost, style: .Plain, target: self, action: #selector(NewFeedViewController.tryPost(_:)))
             button.enabled = false
         return button
     }()
@@ -143,14 +143,7 @@ final class NewFeedViewController: SegueViewController {
     
     private var imageAssets: [PHAsset] = []
     
-    private var mediaImages = [UIImage]() {
-        didSet {
-            self.mediaCollectionView.performBatchUpdates({ [weak self] in
-                self?.mediaCollectionView.reloadSections(NSIndexSet(index: 0))
-               
-            }, completion: nil)
-        }
-    }
+    private var mediaImages = [UIImage]()
 
     enum UploadState {
         case Ready
@@ -187,8 +180,6 @@ final class NewFeedViewController: SegueViewController {
         }
     }
     
-    //let max = Int(INT16_MAX)
-    
     private let skills: [Skill] = {
         guard let me = me() else {
             return []
@@ -206,7 +197,7 @@ final class NewFeedViewController: SegueViewController {
         }
     }
 
-    private var previewTransitionViews: [UIView?]?
+    private var previewReferences: [Reference?]?
     private var previewNewFeedPhotos: [PreviewNewFeedPhoto] = []
 
     deinit {
@@ -216,7 +207,7 @@ final class NewFeedViewController: SegueViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        navigationItem.titleView = NavigationTitleLabel(title: NSLocalizedString("New Feed", comment: ""))
+        navigationItem.titleView = NavigationTitleLabel(title: String.trans_titleNewFeed)
         view.backgroundColor = UIColor.yepBackgroundColor()
         
         navigationItem.rightBarButtonItem = postButton
@@ -248,7 +239,10 @@ final class NewFeedViewController: SegueViewController {
         mediaCollectionView.dataSource = self
         mediaCollectionView.delegate = self
         mediaCollectionView.showsHorizontalScrollIndicator = false
-        
+
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(reorderMediaCollectionViewWithLongPress(_:)))
+        mediaCollectionView.addGestureRecognizer(longPress)
+
         // pick skill
         
         // 只有自己也有，才使用准备的
@@ -444,6 +438,7 @@ final class NewFeedViewController: SegueViewController {
 //                for image in images {
 //                    self?.mediaImages.append(image)
 //                }
+//                self?.mediaCollectionView.reloadData()
 //            }
         }
     }
@@ -458,8 +453,6 @@ final class NewFeedViewController: SegueViewController {
         
         if pickedSkill == nil {
             if !skills.isEmpty {
-                //let centerRow = max / 2
-                //let selectedRow = centerRow
                 let selectedRow = 0
                 skillPickerView.selectRow(selectedRow, inComponent: 0, animated: false)
                 pickedSkill = skills[selectedRow % skills.count]
@@ -467,11 +460,7 @@ final class NewFeedViewController: SegueViewController {
             
         } else {
             if let skill = preparedSkill, let index = skills.indexOf(skill) {
-                
-                //var selectedRow = max / 2
-                //selectedRow = selectedRow - selectedRow % skills.count + index
                 let selectedRow = index
-
                 skillPickerView.selectRow(selectedRow, inComponent: 0, animated: false)
                 pickedSkill = skills[selectedRow % skills.count]
             }
@@ -627,9 +616,8 @@ final class NewFeedViewController: SegueViewController {
         let messageLength = (messageTextView.text as NSString).length
 
         guard messageLength <= YepConfig.maxFeedTextLength else {
-            let message = String(format: NSLocalizedString("Feed info is too long!\nUp to %d letters.", comment: ""), YepConfig.maxFeedTextLength)
+            let message = String.trans_promptFeedInfoTooLong(YepConfig.maxFeedTextLength)
             YepAlert.alertSorry(message: message, inViewController: self)
-
             return
         }
 
@@ -985,39 +973,70 @@ final class NewFeedViewController: SegueViewController {
     }
 
     @IBAction private func playOrPauseAudio(sender: UIButton) {
-        YepAlert.alertSorry(message: "你以为可以播放吗？\nNIX已经累死了。", inViewController: self)
+
+        YepAlert.alertSorry(message: "你以为可以播放吗？\n哈哈哈，NIX和你开个玩笑。", inViewController: self)
+    }
+
+    @objc private func reorderMediaCollectionViewWithLongPress(gesture: UILongPressGestureRecognizer) {
+
+        let collectionView = mediaCollectionView
+
+        switch(gesture.state) {
+
+        case .Began:
+            guard let selectedIndexPath = collectionView.indexPathForItemAtPoint(gesture.locationInView(self.mediaCollectionView)) else {
+                break
+            }
+            collectionView.beginInteractiveMovementForItemAtIndexPath(selectedIndexPath)
+
+        case .Changed:
+            collectionView.updateInteractiveMovementTargetPosition(gesture.locationInView(gesture.view!))
+
+        case .Ended:
+            collectionView.endInteractiveMovement()
+
+        default:
+            collectionView.cancelInteractiveMovement()
+        }
     }
 }
 
 // MARK: - UICollectionViewDataSource, UICollectionViewDelegate
 
 extension NewFeedViewController: UICollectionViewDataSource, UICollectionViewDelegate {
-    
+
+    enum Section: Int {
+        case Photos
+        case Add
+    }
+
     func numberOfSectionsInCollectionView(collectionView: UICollectionView) -> Int {
         return 2
     }
     
     func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        
+
+        guard let section = Section(rawValue: section) else {
+            fatalError("Invalid section!")
+        }
+
         switch section {
-        case 0:
+        case .Photos:
             return mediaImages.count
-        case 1:
+        case .Add:
             return 1
-        default:
-            return 0
         }
     }
     
     func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
-        
-        switch indexPath.section {
-            
-        case 1:
-            let cell: FeedMediaAddCell = collectionView.dequeueReusableCell(forIndexPath: indexPath)
-            return cell
-            
-        case 0:
+
+        guard let section = Section(rawValue: indexPath.section) else {
+            fatalError("Invalid section!")
+        }
+
+        switch section {
+
+        case .Photos:
             let cell: FeedMediaCell = collectionView.dequeueReusableCell(forIndexPath: indexPath)
             
             let image = mediaImages[indexPath.item]
@@ -1028,39 +1047,102 @@ extension NewFeedViewController: UICollectionViewDataSource, UICollectionViewDel
             }
             
             return cell
-            
-        default:
-            return UICollectionViewCell()
+
+        case .Add:
+            let cell: FeedMediaAddCell = collectionView.dequeueReusableCell(forIndexPath: indexPath)
+            return cell
         }
     }
     
     func collectionView(collectionView: UICollectionView!, layout collectionViewLayout: UICollectionViewLayout!, sizeForItemAtIndexPath indexPath: NSIndexPath!) -> CGSize {
 
-        switch indexPath.section {
-        case 1:
+        guard let section = Section(rawValue: indexPath.section) else {
+            fatalError("Invalid section!")
+        }
+
+        switch section {
+
+        case .Photos:
+            return CGSize(width: 80, height: 80)
+
+        case .Add:
             guard mediaImages.count != 4 else {
                 return CGSizeZero
             }
-            return CGSize(width: 80, height: 80)
-        default:
             return CGSize(width: 80, height: 80)
         }
     }
     
     func collectionView(collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, insetForSectionAtIndex section: Int) -> UIEdgeInsets {
+
         return UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 10)
+    }
+
+    func collectionView(collectionView: UICollectionView, canMoveItemAtIndexPath indexPath: NSIndexPath) -> Bool {
+
+        guard let section = Section(rawValue: indexPath.section) else {
+            fatalError("Invalid section!")
+        }
+
+        switch section {
+
+        case .Photos:
+            return true
+
+        case .Add:
+            return false
+        }
+    }
+
+    func collectionView(collectionView: UICollectionView, moveItemAtIndexPath sourceIndexPath: NSIndexPath, toIndexPath destinationIndexPath: NSIndexPath) {
+
+        let sourceIndex = sourceIndexPath.item
+        let destinationIndex = destinationIndexPath.item
+
+        guard sourceIndex != destinationIndex else {
+            return
+        }
+
+        let image = mediaImages[sourceIndex]
+        mediaImages.removeAtIndex(sourceIndex)
+        mediaImages.insert(image, atIndex: destinationIndex)
     }
     
     func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
-        
-        switch indexPath.section {
-            
-        case 1:
+
+        guard let section = Section(rawValue: indexPath.section) else {
+            fatalError("Invalid section!")
+        }
+
+        switch section {
+
+        case .Photos:
+
+            let index = indexPath.row
+
+            let references: [Reference?] = (0..<mediaImages.count).map({
+                let cell = collectionView.cellForItemAtIndexPath(NSIndexPath(forItem: $0, inSection: indexPath.section)) as? FeedMediaCell
+                return cell?.transitionReference
+            })
+
+            self.previewReferences = references
+
+            let previewNewFeedPhotos = mediaImages.map({ PreviewNewFeedPhoto(image: $0) })
+
+            self.previewNewFeedPhotos = previewNewFeedPhotos
+
+            let photos: [Photo] = previewNewFeedPhotos.map({ $0 })
+            let initialPhoto = photos[index]
+
+            let photosViewController = PhotosViewController(photos: photos, initialPhoto: initialPhoto, delegate: self)
+            self.presentViewController(photosViewController, animated: true, completion: nil)
+
+        case .Add:
 
             messageTextView.resignFirstResponder()
             
             if mediaImages.count == 4 {
-                YepAlert.alertSorry(message: NSLocalizedString("Feed can only has 4 photos.", comment: ""), inViewController: self)
+                YepAlert.alertSorry(message: String.trans_promptFeedCanOnlyHasXPhotos, inViewController: self)
                 return
             }
             
@@ -1105,30 +1187,6 @@ extension NewFeedViewController: UICollectionViewDataSource, UICollectionViewDel
             pickAlertController.addAction(cancelAction)
         
             self.presentViewController(pickAlertController, animated: true, completion: nil)
-
-        case 0:
-
-            let index = indexPath.row
-
-            let transitionViews: [UIView?] = (0..<mediaImages.count).map({
-                let cell = collectionView.cellForItemAtIndexPath(NSIndexPath(forItem: $0, inSection: indexPath.section)) as? FeedMediaCell
-                return cell?.imageView
-            })
-
-            self.previewTransitionViews = transitionViews
-
-            let previewNewFeedPhotos = mediaImages.map({ PreviewNewFeedPhoto(image: $0) })
-
-            self.previewNewFeedPhotos = previewNewFeedPhotos
-
-            let photos: [Photo] = previewNewFeedPhotos.map({ $0 })
-            let initialPhoto = photos[index]
-
-            let photosViewController = PhotosViewController(photos: photos, initialPhoto: initialPhoto, delegate: self)
-            self.presentViewController(photosViewController, animated: true, completion: nil)
-
-        default:
-            break
         }
     }
 }
@@ -1219,6 +1277,7 @@ extension NewFeedViewController: UIImagePickerControllerDelegate, UINavigationCo
                 if let image = info[UIImagePickerControllerOriginalImage] as? UIImage {
                     if mediaImages.count <= 3 {
                         mediaImages.append(image)
+                        mediaCollectionView.reloadData()
                     }
                 }
                 
@@ -1234,27 +1293,27 @@ extension NewFeedViewController: UIImagePickerControllerDelegate, UINavigationCo
 // MARK: Fetch images from imagePicker
 
 extension NewFeedViewController: ReturnPickedPhotosDelegate {
+
     func returnSelectedImages(images: [UIImage], imageAssets: [PHAsset]) {
         
         for image in images {
-            self.mediaImages.append(image)
+            mediaImages.append(image)
         }
-        
+        mediaCollectionView.reloadData()
     }
- 
 }
 
 // MARK: - PhotosViewControllerDelegate
 
 extension NewFeedViewController: PhotosViewControllerDelegate {
 
-    func photosViewController(vc: PhotosViewController, referenceViewForPhoto photo: Photo) -> UIView? {
+    func photosViewController(vc: PhotosViewController, referenceForPhoto photo: Photo) -> Reference? {
 
         println("photosViewController:referenceViewForPhoto:\(photo)")
 
         if let previewNewFeedPhoto = photo as? PreviewNewFeedPhoto {
             if let index = previewNewFeedPhotos.indexOf(previewNewFeedPhoto) {
-                return previewTransitionViews?[index]
+                return previewReferences?[index]
             }
         }
 
@@ -1275,7 +1334,7 @@ extension NewFeedViewController: PhotosViewControllerDelegate {
 
         println("photosViewControllerDidDismiss")
 
-        previewTransitionViews = nil
+        previewReferences = nil
         previewNewFeedPhotos = []
     }
 }

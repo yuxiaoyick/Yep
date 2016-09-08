@@ -14,32 +14,16 @@ import YepPreview
 import AVFoundation
 import MapKit
 import Ruler
+import KeypathObserver
 
 private let screenHeight: CGFloat = UIScreen.mainScreen().bounds.height
 
-final class SearchFeedsViewController: SegueViewController {
+final class SearchFeedsViewController: BaseSearchViewController {
 
     static let feedNormalImagesCountThreshold: Int = Ruler.UniversalHorizontal(3, 4, 4, 3, 4).value
 
-    var originalNavigationControllerDelegate: UINavigationControllerDelegate?
-    var searchTransition: SearchTransition?
-
     var skill: Skill?
     var profileUser: ProfileUser?
-
-    private var searchBarCancelButtonEnabledObserver: ObjectKeypathObserver<UIButton>?
-    @IBOutlet weak var searchBar: UISearchBar! {
-        didSet {
-            searchBar.setSearchFieldBackgroundImage(UIImage.yep_searchbarTextfieldBackground, forState: .Normal)
-            searchBar.returnKeyType = .Done
-        }
-    }
-    @IBOutlet weak var searchBarBottomLineView: HorizontalLineView! {
-        didSet {
-            searchBarBottomLineView.lineColor = UIColor(white: 0.68, alpha: 1.0)
-        }
-    }
-    @IBOutlet weak var searchBarTopConstraint: NSLayoutConstraint!
 
     private lazy var searchFeedsFooterView: SearchFeedsFooterView = {
 
@@ -139,7 +123,7 @@ final class SearchFeedsViewController: SegueViewController {
             return
         }
 
-        searchTask = delay(0.5) { [weak self] in
+        searchTask = delay(YepConfig.Search.delayInterval) { [weak self] in
             if let footer = self?.feedsTableView.tableFooterView as? SearchFeedsFooterView {
                 footer.style = .Searching
             }
@@ -273,14 +257,13 @@ final class SearchFeedsViewController: SegueViewController {
         updateCellOfFeedAudio(playingFeedAudio, withCurrentTime: currentTime)
     }
 
-    private var previewTransitionViews: [UIView?]?
+    private var previewReferences: [Reference?]?
     private var previewAttachmentPhotos: [PreviewAttachmentPhoto] = []
     private var previewDribbblePhotos: [PreviewDribbblePhoto] = []
 
     // MARK: Life Circle
 
     deinit {
-        searchBarCancelButtonEnabledObserver = nil
         NSNotificationCenter.defaultCenter().removeObserver(self)
         println("deinit SearchFeeds")
     }
@@ -310,35 +293,6 @@ final class SearchFeedsViewController: SegueViewController {
         NSNotificationCenter.defaultCenter().addObserver(self, selector: #selector(SearchFeedsViewController.didRecieveMenuWillHideNotification(_:)), name: UIMenuControllerWillHideMenuNotification, object: nil)
 
         NSNotificationCenter.defaultCenter().addObserver(self, selector: #selector(SearchFeedsViewController.feedAudioDidFinishPlaying(_:)), name: AVPlayerItemDidPlayToEndTimeNotification, object: nil)
-    }
-
-    private var isFirstAppear = true
-
-    override func viewWillAppear(animated: Bool) {
-        super.viewWillAppear(animated)
-
-        navigationController?.setNavigationBarHidden(true, animated: true)
-
-        if isFirstAppear {
-            delay(0.3) { [weak self] in
-                self?.searchBar.becomeFirstResponder()
-            }
-            delay(0.4) { [weak self] in
-                self?.searchBar.setShowsCancelButton(true, animated: true)
-
-                self?.searchBarCancelButtonEnabledObserver = self?.searchBar.yep_makeSureCancelButtonAlwaysEnabled()
-            }
-        }
-    }
-
-    override func viewDidAppear(animated: Bool) {
-        super.viewDidAppear(animated)
-
-        recoverSearchTransition()
-
-        moveUpSearchBar()
-
-        isFirstAppear = false
     }
 
     // MARK: - Private
@@ -381,7 +335,10 @@ final class SearchFeedsViewController: SegueViewController {
 
         let perPage: Int = 30
 
-        feedsWithKeyword(keyword, skillID: skill?.id, userID: profileUser?.userID, pageIndex: currentPageIndex, perPage: perPage, failureHandler: failureHandler) { [weak self] validFeeds, originalFeedsCount  in
+        feedsWithKeyword(keyword, skillID: skill?.id, userID: profileUser?.userID, pageIndex: currentPageIndex, perPage: perPage, failureHandler: failureHandler) { [weak self] feeds in
+
+            let originalFeedsCount = feeds.count
+            let validFeeds = feeds.flatMap({ $0 })
 
             SafeDispatch.async { [weak self] in
 
@@ -409,7 +366,12 @@ final class SearchFeedsViewController: SegueViewController {
                 case .Init:
                     strongSelf.feeds = newFeeds
 
-                    wayToUpdate = .ReloadData
+                    if Set(oldFeeds.map({ $0.id })) == Set(newFeeds.map({ $0.id })) {
+                        wayToUpdate = .None
+
+                    } else {
+                        wayToUpdate = .ReloadData
+                    }
 
                 case .LoadMore:
                     let oldFeedsCount = oldFeeds.count
@@ -573,8 +535,7 @@ extension SearchFeedsViewController: UISearchBarDelegate {
 
         UIView.animateWithDuration(0.1, delay: 0.0, options: .CurveEaseInOut, animations: { [weak self] _ in
             self?.searchBarBottomLineView.alpha = 1
-        }, completion: { finished in
-        })
+        }, completion: nil)
 
         return true
     }
@@ -597,8 +558,7 @@ extension SearchFeedsViewController: UISearchBarDelegate {
 
             UIView.animateWithDuration(0.1, delay: 0.0, options: .CurveEaseInOut, animations: { [weak self] _ in
                 self?.searchBarBottomLineView.alpha = 0
-            }, completion: { finished in
-            })
+            }, completion: nil)
 
             navigationController?.popViewControllerAnimated(true)
         }
@@ -801,9 +761,9 @@ extension SearchFeedsViewController: UITableViewDataSource, UITableViewDelegate 
 
             case .Image:
 
-                let tapImagesAction: FeedTapImagesAction = { [weak self] transitionViews, attachments, image, index in
+                let tapImagesAction: FeedTapImagesAction = { [weak self] transitionReferences, attachments, image, index in
 
-                    self?.previewTransitionViews = transitionViews
+                    self?.previewReferences = transitionReferences
 
                     let previewAttachmentPhotos = attachments.map({ PreviewAttachmentPhoto(attachment: $0) })
                     previewAttachmentPhotos[index].image = image
@@ -861,13 +821,13 @@ extension SearchFeedsViewController: UITableViewDataSource, UITableViewDelegate 
                     self?.yep_openURL(URL)
                 }
 
-                cell.tapDribbbleShotMediaAction = { [weak self] transitionView, image, imageURL, linkURL in
+                cell.tapDribbbleShotMediaAction = { [weak self] transitionReference, image, imageURL, linkURL in
 
                     guard image != nil else {
                         return
                     }
 
-                    self?.previewTransitionViews = [transitionView]
+                    self?.previewReferences = [transitionReference].map({ Optional($0) })
 
                     let previewDribbblePhoto = PreviewDribbblePhoto(imageURL: imageURL)
                     previewDribbblePhoto.image = image
@@ -1199,18 +1159,18 @@ extension SearchFeedsViewController: AVAudioPlayerDelegate {
 
 extension SearchFeedsViewController: PhotosViewControllerDelegate {
 
-    func photosViewController(vc: PhotosViewController, referenceViewForPhoto photo: Photo) -> UIView? {
+    func photosViewController(vc: PhotosViewController, referenceForPhoto photo: Photo) -> Reference? {
 
         println("photosViewController:referenceViewForPhoto:\(photo)")
 
         if let previewAttachmentPhoto = photo as? PreviewAttachmentPhoto {
             if let index = previewAttachmentPhotos.indexOf(previewAttachmentPhoto) {
-                return previewTransitionViews?[index]
+                return previewReferences?[index]
             }
 
         } else if let previewDribbblePhoto = photo as? PreviewDribbblePhoto {
             if let index = previewDribbblePhotos.indexOf(previewDribbblePhoto) {
-                return previewTransitionViews?[index]
+                return previewReferences?[index]
             }
         }
 
@@ -1231,7 +1191,7 @@ extension SearchFeedsViewController: PhotosViewControllerDelegate {
 
         println("photosViewControllerDidDismiss")
 
-        previewTransitionViews = nil
+        previewReferences = nil
         previewAttachmentPhotos = []
         previewDribbblePhotos = []
     }

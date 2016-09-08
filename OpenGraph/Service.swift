@@ -19,10 +19,12 @@ public func titleOfURL(URL: NSURL, failureHandler: FailureHandler?, completion: 
 
         guard error == nil else {
 
+            let errorMessage = String.trans_errorGetTitleOfURLFailed
+
             if let failureHandler = failureHandler {
-                failureHandler(reason: .Other(error), errorMessage: NSLocalizedString("Get title of URL failed!", comment: ""))
+                failureHandler(reason: .Other(error), errorMessage: errorMessage)
             } else {
-                defaultFailureHandler(reason: .Other(error), errorMessage: NSLocalizedString("Get title of URL failed!", comment: ""))
+                defaultFailureHandler(reason: .Other(error), errorMessage: errorMessage)
             }
 
             return
@@ -48,10 +50,11 @@ public func titleOfURL(URL: NSURL, failureHandler: FailureHandler?, completion: 
             doc = Kanna.HTML(html: newHTMLString, encoding: NSUTF8StringEncoding),
             title = doc.head?.css("title").first?.text where !title.isEmpty else {
 
+                let errorMessage = String.trans_promptNoTitleForURL
                 if let failureHandler = failureHandler {
-                    failureHandler(reason: .CouldNotParseJSON, errorMessage: NSLocalizedString("No title for URL!", comment: ""))
+                    failureHandler(reason: .CouldNotParseJSON, errorMessage: errorMessage)
                 } else {
-                    defaultFailureHandler(reason: .CouldNotParseJSON, errorMessage: NSLocalizedString("No title for URL!", comment: ""))
+                    defaultFailureHandler(reason: .CouldNotParseJSON, errorMessage: errorMessage)
                 }
 
                 return

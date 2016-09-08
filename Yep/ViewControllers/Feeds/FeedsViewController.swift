@@ -69,8 +69,8 @@ final class FeedsViewController: BaseViewController {
         return SearchTransition()
     }()
 
-    private lazy var noFeedsFooterView: InfoView = InfoView(NSLocalizedString("No Feeds.", comment: ""))
-    private lazy var fetchFailedFooterView: InfoView = InfoView(NSLocalizedString("Fetch Failed!", comment: ""))
+    private lazy var noFeedsFooterView: InfoView = InfoView(String.trans_promptNoFeeds)
+    private lazy var fetchFailedFooterView: InfoView = InfoView(String.trans_errorFetchFailed)
 
     @IBOutlet weak var feedsTableView: UITableView!  {
         didSet {
@@ -157,7 +157,7 @@ final class FeedsViewController: BaseViewController {
                 }
             ),
             .Default(
-                title: NSLocalizedString("Location", comment: ""),
+                title: String.trans_titleLocation,
                 titleColor: UIColor.yepTintColor(),
                 action: { [weak self] in
                     self?.performSegueWithIdentifier("presentPickLocation", sender: nil)
@@ -348,7 +348,7 @@ final class FeedsViewController: BaseViewController {
     //var navigationControllerDelegate: ConversationMessagePreviewNavigationControllerDelegate?
     //var originalNavigationControllerDelegate: UINavigationControllerDelegate?
 
-    private var previewTransitionViews: [UIView?]?
+    private var previewReferences: [Reference?]?
     private var previewAttachmentPhotos: [PreviewAttachmentPhoto] = []
     private var previewDribbblePhotos: [PreviewDribbblePhoto] = []
 
@@ -373,7 +373,7 @@ final class FeedsViewController: BaseViewController {
             }
         }
 
-        navigationItem.title = NSLocalizedString("Feeds", comment: "")
+        navigationItem.title = String.trans_titleFeeds
 
         searchBar.placeholder = NSLocalizedString("Search Feeds", comment: "")
 
@@ -452,8 +452,8 @@ final class FeedsViewController: BaseViewController {
 
             if skill == nil {
                 if let realm = try? Realm(), offlineJSON = OfflineJSON.withName(.Feeds, inRealm: realm) {
-                    if let JSON = offlineJSON.JSON, (feeds, _) = parseFeeds(JSON) {
-                        self.feeds = feeds
+                    if let JSON = offlineJSON.JSON, feeds = parseFeeds(JSON) {
+                        self.feeds = feeds.flatMap({ $0 })
                         activityIndicator.stopAnimating()
                     }
                 }
@@ -512,7 +512,7 @@ final class FeedsViewController: BaseViewController {
                 }, completion: { [weak self] _ in
 
                     let message = String.trans_promptSuccessfullyAddedSkill(skillLocalName, to: skillSet.name)
-                    YepAlert.alert(title: NSLocalizedString("Success", comment: ""), message: message, dismissTitle: NSLocalizedString("OK", comment: ""), inViewController: self, withDismissAction: nil)
+                    YepAlert.alert(title: NSLocalizedString("Success", comment: ""), message: message, dismissTitle: String.trans_titleOK, inViewController: self, withDismissAction: nil)
                     
                     SafeDispatch.async {
                         self?.navigationItem.rightBarButtonItem = nil
@@ -608,9 +608,11 @@ final class FeedsViewController: BaseViewController {
 
         let perPage = 20
 
-        let completion: ([DiscoveredFeed], Int) -> Void = { validFeeds, originalFeedsCount in
+        let completion: ([DiscoveredFeed?]) -> Void = { feeds in
 
-            println("new feeds.count: \(validFeeds.count)")
+            let originalFeedsCount = feeds.count
+            println("new feeds.count: \(originalFeedsCount)")
+            let validFeeds = feeds.flatMap({ $0 })
 
             SafeDispatch.async { [weak self] in
 
@@ -646,8 +648,13 @@ final class FeedsViewController: BaseViewController {
 
                     case .Top:
                         strongSelf.feeds = newFeeds
-                        
-                        wayToUpdate = .ReloadData
+
+                        if Set(oldFeeds.map({ $0.id })) == Set(newFeeds.map({ $0.id })) {
+                            wayToUpdate = .None
+
+                        } else {
+                            wayToUpdate = .ReloadData
+                        }
 
                     case .LoadMore:
                         let oldFeedsCount = strongSelf.feeds.count
@@ -1318,7 +1325,7 @@ extension FeedsViewController: UITableViewDataSource, UITableViewDelegate {
 
                 let tapImagesAction: FeedTapImagesAction = { [weak self] transitionViews, attachments, image, index in
 
-                    self?.previewTransitionViews = transitionViews
+                    self?.previewReferences = transitionViews
 
                     let previewAttachmentPhotos = attachments.map({ PreviewAttachmentPhoto(attachment: $0) })
                     previewAttachmentPhotos[index].image = image
@@ -1385,13 +1392,13 @@ extension FeedsViewController: UITableViewDataSource, UITableViewDelegate {
                     self?.yep_openURL(URL)
                 }
 
-                cell.tapDribbbleShotMediaAction = { [weak self] transitionView, image, imageURL, linkURL in
+                cell.tapDribbbleShotMediaAction = { [weak self] transitionReference, image, imageURL, linkURL in
 
                     guard image != nil else {
                         return
                     }
 
-                    self?.previewTransitionViews = [transitionView]
+                    self?.previewReferences = [transitionReference].map({ Optional($0) })
 
                     let previewDribbblePhoto = PreviewDribbblePhoto(imageURL: imageURL)
                     previewDribbblePhoto.image = image
@@ -1946,18 +1953,18 @@ extension FeedsViewController: UIViewControllerPreviewingDelegate {
 
 extension FeedsViewController: PhotosViewControllerDelegate {
 
-    func photosViewController(vc: PhotosViewController, referenceViewForPhoto photo: Photo) -> UIView? {
+    func photosViewController(vc: PhotosViewController, referenceForPhoto photo: Photo) -> Reference? {
 
         println("photosViewController:referenceViewForPhoto:\(photo)")
 
         if let previewAttachmentPhoto = photo as? PreviewAttachmentPhoto {
             if let index = previewAttachmentPhotos.indexOf(previewAttachmentPhoto) {
-                return previewTransitionViews?[index]
+                return previewReferences?[index]
             }
 
         } else if let previewDribbblePhoto = photo as? PreviewDribbblePhoto {
             if let index = previewDribbblePhotos.indexOf(previewDribbblePhoto) {
-                return previewTransitionViews?[index]
+                return previewReferences?[index]
             }
         }
 
@@ -1978,7 +1985,7 @@ extension FeedsViewController: PhotosViewControllerDelegate {
 
         println("photosViewControllerDidDismiss")
 
-        previewTransitionViews = nil
+        previewReferences = nil
         previewAttachmentPhotos = []
         previewDribbblePhotos = []
     }

@@ -6,11 +6,9 @@
 //  Copyright © 2016年 Catch Inc. All rights reserved.
 //
 
-import Foundation
-
 public protocol PhotosViewControllerDelegate: class {
 
-    func photosViewController(vc: PhotosViewController, referenceViewForPhoto photo: Photo) -> UIView?
+    func photosViewController(vc: PhotosViewController, referenceForPhoto photo: Photo) -> Reference?
     func photosViewController(vc: PhotosViewController, didNavigateToPhoto photo: Photo, atIndex index: Int)
     func photosViewControllerWillDismiss(vc: PhotosViewController)
     func photosViewControllerDidDismiss(vc: PhotosViewController)

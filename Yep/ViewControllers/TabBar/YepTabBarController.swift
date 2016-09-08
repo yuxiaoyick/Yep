@@ -28,9 +28,9 @@ final class YepTabBarController: UITabBarController {
             case .Contacts:
                 return String.trans_titleContacts
             case .Feeds:
-                return NSLocalizedString("Feeds", comment: "")
+                return String.trans_titleFeeds
             case .Discover:
-                return NSLocalizedString("Discover", comment: "")
+                return String.trans_titleDiscover
             case .Profile:
                 return NSLocalizedString("Profile", comment: "")
             }

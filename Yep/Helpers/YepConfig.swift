@@ -256,5 +256,13 @@ final class YepConfig {
             static let timelineImage = UIImage.yep_wechatTimeline
         }
     }
+
+    struct Conversation {
+        static let hasUnreadMessagesPredicate = NSPredicate(format: "hasUnreadMessages = true")
+    }
+
+    struct Search {
+        static let delayInterval: NSTimeInterval = 0.5
+    }
 }
 

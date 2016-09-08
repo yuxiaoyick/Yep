@@ -84,7 +84,7 @@ final class ConversationsViewController: BaseViewController {
         }
     }
 
-    private lazy var noConversationFooterView: InfoView = InfoView(NSLocalizedString("Have a nice day!", comment: ""))
+    private lazy var noConversationFooterView: InfoView = InfoView(String.trans_promptHaveANiceDay)
 
     private var noConversation = false {
         didSet {
@@ -177,8 +177,13 @@ final class ConversationsViewController: BaseViewController {
                 strongSelf.unreadMessagesCount = countOfUnreadMessagesInRealm(realm, withConversationType: .OneToOne)
 
                 let haveOneToOneUnreadMessages = strongSelf.unreadMessagesCount > 0
-
                 strongSelf.haveUnreadMessages = haveOneToOneUnreadMessages || (countOfUnreadMessagesInRealm(realm, withConversationType: .Group) > 0)
+                /*
+                let predicate = YepConfig.Conversation.hasUnreadMessagesPredicate
+                let haveUnreadMessages = (!strongSelf.conversations.filter(predicate).isEmpty)
+                    || (!feedConversationsInRealm(realm).filter(predicate).isEmpty)
+                strongSelf.haveUnreadMessages = haveUnreadMessages
+                 */
 
                 strongSelf.noConversation = countOfConversationsInRealm(realm) == 0
             }
@@ -242,7 +247,7 @@ final class ConversationsViewController: BaseViewController {
         replyAction.authenticationRequired = false
 
         let replyOKAction = UIMutableUserNotificationAction()
-        replyOKAction.title = "OK"
+        replyOKAction.title = String.trans_titleOK
         replyOKAction.identifier = YepNotificationOKAction
         replyOKAction.activationMode = .Background
         replyOKAction.behavior = .Default
@@ -282,14 +287,6 @@ final class ConversationsViewController: BaseViewController {
             let vc = segue.destinationViewController as! ConversationViewController
             let conversation = sender as! Conversation
             prepareConversationViewController(vc, withConversation: conversation)
-
-            recoverOriginalNavigationDelegate()
-
-        case "showChat":
-
-            let vc = segue.destinationViewController as! ChatViewController
-            let conversation = sender as! Conversation
-            vc.conversation = conversation
 
             recoverOriginalNavigationDelegate()
 
@@ -442,7 +439,7 @@ extension ConversationsViewController: UITableViewDataSource, UITableViewDelegat
                 }
 
             } else {
-                cell.chatLabel.text = NSLocalizedString("No messages yet.", comment: "")
+                cell.chatLabel.text = String.trans_promptNoMessages
             }
 
         case Section.Conversation.rawValue:
@@ -496,17 +493,7 @@ extension ConversationsViewController: UITableViewDataSource, UITableViewDelegat
 
         case Section.Conversation.rawValue:
             if let cell = tableView.cellForRowAtIndexPath(indexPath) as? ConversationCell {
-
-                #if ASYNC_DISPLAY
-                    let conversation = cell.conversation
-                    if conversation.withFriend?.username == "init" || conversation.withFriend?.username == "nixzhu" {
-                        performSegueWithIdentifier("showChat", sender: cell.conversation)
-                    } else {
-                        performSegueWithIdentifier("showConversation", sender: cell.conversation)
-                    }
-                #else
-                    performSegueWithIdentifier("showConversation", sender: cell.conversation)
-                #endif
+                performSegueWithIdentifier("showConversation", sender: cell.conversation)
             }
 
         default:

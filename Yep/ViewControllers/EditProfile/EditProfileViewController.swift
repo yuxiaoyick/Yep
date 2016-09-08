@@ -67,7 +67,7 @@ final class EditProfileViewController: SegueViewController {
     }
 
     private var introduction: String {
-        return YepUserDefaults.introduction.value ?? NSLocalizedString("No Introduction yet.", comment: "")
+        return YepUserDefaults.introduction.value ?? String.trans_promptNoSelfIntroduction
     }
 
     private var blogURLString: String {
@@ -110,7 +110,7 @@ final class EditProfileViewController: SegueViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = NSLocalizedString("Edit Profile", comment: "")
+        title = String.trans_titleEditProfile
 
         let avatarSize = YepConfig.editProfileAvatarSize()
         avatarImageViewWidthConstraint.constant = avatarSize
@@ -160,7 +160,7 @@ final class EditProfileViewController: SegueViewController {
             YepHUD.hideActivityIndicator()
             println("friendsInContacts discoveredUsers.count: \(discoveredUsers.count)")
 
-            YepAlert.alert(title: NSLocalizedString("Success", comment: ""), message: NSLocalizedString("Yep will match friends from your contacts for you.", comment: ""), dismissTitle: NSLocalizedString("OK", comment: ""), inViewController: self, withDismissAction: nil)
+            YepAlert.alert(title: NSLocalizedString("Success", comment: ""), message: NSLocalizedString("Yep will match friends from your contacts for you.", comment: ""), dismissTitle: String.trans_titleOK, inViewController: self, withDismissAction: nil)
         })
     }
 
@@ -339,7 +339,7 @@ extension EditProfileViewController: UITableViewDataSource, UITableViewDelegate 
                 let username = me()?.username ?? ""
 
                 if username.isEmpty {
-                    cell.infoLabel.text = NSLocalizedString("None", comment: "")
+                    cell.infoLabel.text = String.trans_promptNone
                     cell.accessoryImageView.hidden = false
                     cell.selectionStyle = .Default
                 } else {
@@ -357,7 +357,7 @@ extension EditProfileViewController: UITableViewDataSource, UITableViewDelegate 
 
                 let cell: EditProfileLessInfoCell = tableView.dequeueReusableCell()
 
-                cell.annotationLabel.text = NSLocalizedString("Nickname", comment: "")
+                cell.annotationLabel.text = String.trans_titleNickname
                 cell.accessoryImageView.hidden = false
                 cell.selectionStyle = .Default
 
@@ -386,11 +386,11 @@ extension EditProfileViewController: UITableViewDataSource, UITableViewDelegate 
             case .Intro:
                 let cell: EditProfileMoreInfoCell = tableView.dequeueReusableCell()
 
-                cell.annotationLabel.text = NSLocalizedString("Introduction", comment: "")
+                cell.annotationLabel.text = String.trans_titleSelfIntroduction
 
                 YepUserDefaults.introduction.bindAndFireListener(Listener.Introduction) { [weak cell] introduction in
                     SafeDispatch.async {
-                        cell?.infoTextView.text = introduction ?? NSLocalizedString("Introduce yourself here.", comment: "")
+                        cell?.infoTextView.text = introduction ?? String.trans_promptUserIntroPlaceholder
                     }
                 }
 
@@ -544,7 +544,7 @@ extension EditProfileViewController: UITableViewDataSource, UITableViewDelegate 
 
                         defaultFailureHandler(reason: reason, errorMessage: errorMessage)
 
-                        YepAlert.alert(title: NSLocalizedString("Ooops!", comment: ""), message: NSLocalizedString("You have entered an invalid URL!", comment: ""), dismissTitle: NSLocalizedString("Modify", comment: ""), inViewController: self, withDismissAction: { [weak cell] in
+                        YepAlert.alert(title: NSLocalizedString("Ooops!", comment: ""), message: NSLocalizedString("You have entered an invalid URL!", comment: ""), dismissTitle: String.trans_titleModify, inViewController: self, withDismissAction: { [weak cell] in
 
                             cell?.infoTextView.becomeFirstResponder()
                         })
@@ -579,7 +579,7 @@ extension EditProfileViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .LogOut:
             let cell: EditProfileColoredTitleCell = tableView.dequeueReusableCell()
-            cell.coloredTitleLabel.text = NSLocalizedString("Log out", comment: "")
+            cell.coloredTitleLabel.text = String.trans_titleLogOut
             cell.coloredTitleColor = UIColor.redColor()
             return cell
         }
@@ -690,7 +690,7 @@ extension EditProfileViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .LogOut:
 
-            YepAlert.confirmOrCancel(title: NSLocalizedString("Notice", comment: ""), message: NSLocalizedString("Do you want to logout?", comment: ""), confirmTitle: NSLocalizedString("Yes", comment: ""), cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { () -> Void in
+            YepAlert.confirmOrCancel(title: String.trans_titleNotice, message: String.trans_promptTryLogout, confirmTitle: NSLocalizedString("Yes", comment: ""), cancelTitle: String.trans_cancel, inViewController: self, withConfirmAction: { () -> Void in
 
                 logout(failureHandler: { [weak self] reason, errorMessage in
                     defaultFailureHandler(reason: reason, errorMessage: errorMessage)

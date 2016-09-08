@@ -10,8 +10,10 @@ import UIKit
 import AVFoundation
 import MapKit
 import YepKit
+import YepPreview
 import RealmSwift
 import Kingfisher
+import RxSwift
 
 final class FeedView: UIView {
 
@@ -40,7 +42,7 @@ final class FeedView: UIView {
         }
     }
 
-    var tapImagesAction: ((transitionViews: [UIView?], attachments: [DiscoveredAttachment], image: UIImage?, index: Int) -> Void)?
+    var tapImagesAction: ((references: [Reference?], attachments: [DiscoveredAttachment], image: UIImage?, index: Int) -> Void)?
 
     var tapGithubRepoAction: (NSURL -> Void)?
     var tapDribbbleShotAction: (NSURL -> Void)?
@@ -274,8 +276,13 @@ final class FeedView: UIView {
         }
     }
 
+    private var disposableTimer: Disposable?
+
     deinit {
         NSNotificationCenter.defaultCenter().removeObserver(self)
+
+        disposableTimer?.dispose()
+
         println("deinit FeedView")
     }
 
@@ -403,14 +410,22 @@ final class FeedView: UIView {
 
         if let distance = feed.distance {
             if distance < 1 {
-                distanceLabel.text = NSLocalizedString("Nearby", comment: "")
+                distanceLabel.text = String.trans_titleNearby
             } else {
                 distanceLabel.text = "\(distance.yep_format(".1")) km"
             }
         }
 
-        timeLabel.text = "\(NSDate(timeIntervalSince1970: feed.createdUnixTime).timeAgo)"
-
+        let configureTimeLabel: () -> Void = { [weak self] in
+            guard let strongSelf = self else { return }
+            strongSelf.timeLabel.text = feed.timeString
+        }
+        configureTimeLabel()
+        disposableTimer = Observable<Int>
+            .interval(1, scheduler: MainScheduler.instance)
+            .subscribeNext({ _ in
+                configureTimeLabel()
+            })
 
         // social works
 
@@ -503,16 +518,6 @@ final class FeedView: UIView {
                 voiceContainerViewWidthConstraint?.constant = width
             }
 
-            /*
-            if let audioPlayer = YepAudioService.sharedManager.audioPlayer where audioPlayer.playing {
-                if let feedID = YepAudioService.sharedManager.playingFeedAudio?.feedID where feedID == feed.feedID {
-                    audioPlaying = true
-
-                    audioPlaybackTimer = NSTimer.scheduledTimerWithTimeInterval(0.02, target: self, selector: "updateAudioPlaybackProgress:", userInfo: nil, repeats: true)
-                }
-            }
-            */
-
             if let onlineAudioPlayer = YepAudioService.sharedManager.onlineAudioPlayer where onlineAudioPlayer.yep_playing {
                 if let feedID = YepAudioService.sharedManager.playingFeedAudio?.feedID where feedID == feed.feedID {
                     audioPlaying = true
@@ -598,70 +603,6 @@ final class FeedView: UIView {
     }
 
     var syncPlayAudioAction: (() -> Void)?
-
-    /*
-    @IBAction func playOrPauseAudio(sender: UIButton) {
-
-        if AVAudioSession.sharedInstance().category == AVAudioSessionCategoryRecord {
-            do {
-                try AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryPlayback)
-            } catch let error {
-                println("playVoice setCategory failed: \(error)")
-                return
-            }
-        }
-
-        guard let realm = try? Realm(), feed = feed, feedAudio = FeedAudio.feedAudioWithFeedID(feed.feedID, inRealm: realm) else {
-            return
-        }
-
-        func play() {
-
-            YepAudioService.sharedManager.playAudioWithFeedAudio(feedAudio, beginFromTime: audioPlayedDuration, delegate: self, success: { [weak self] in
-                println("playAudioWithFeedAudio success!")
-
-                if let strongSelf = self {
-
-                    strongSelf.audioPlaybackTimer?.invalidate()
-                    strongSelf.audioPlaybackTimer = NSTimer.scheduledTimerWithTimeInterval(0.02, target: strongSelf, selector: "updateAudioPlaybackProgress:", userInfo: nil, repeats: true)
-
-                    YepAudioService.sharedManager.playbackTimer = strongSelf.audioPlaybackTimer
-
-                    strongSelf.audioPlaying = true
-
-                    strongSelf.syncPlayAudioAction?()
-                }
-            })
-        }
-
-        // 如果在播放，就暂停
-        if let audioPlayer = YepAudioService.sharedManager.audioPlayer where audioPlayer.playing {
-
-            audioPlayer.pause()
-
-            if let playbackTimer = YepAudioService.sharedManager.playbackTimer {
-                playbackTimer.invalidate()
-            }
-
-            audioPlaying = false
-
-            if let playingFeedAudio = YepAudioService.sharedManager.playingFeedAudio where playingFeedAudio.feedID == feed.feedID {
-            } else {
-                // 暂停的是别人，咱开始播放
-                play()
-            }
-
-        } else {
-            // 直接播放
-            play()
-        }
-    }
-
-    func updateAudioPlaybackProgress(timer: NSTimer) {
-
-        audioPlayedDuration = YepAudioService.sharedManager.audioPlayCurrentTime
-    }
-    */
 
     private func playOrPauseAudio() {
 
@@ -785,11 +726,11 @@ extension FeedView: UICollectionViewDataSource, UICollectionViewDelegate {
 //        let transitionView = cell.imageView
 //        tapMediaAction?(transitionView: transitionView, image: cell.imageView.image, attachments: attachments, index: indexPath.item)
 
-        let transitionViews: [UIView?] = (0..<attachments.count).map({
+        let references: [Reference?] = (0..<attachments.count).map({
             let cell = collectionView.cellForItemAtIndexPath(NSIndexPath(forItem: $0, inSection: indexPath.section)) as? FeedMediaCell
-            return cell?.imageView
+            return cell?.transitionReference
         })
-        tapImagesAction?(transitionViews: transitionViews, attachments: attachments, image: cell.imageView.image, index: indexPath.item)
+        tapImagesAction?(references: references, attachments: attachments, image: cell.imageView.image, index: indexPath.item)
     }
 }
 
